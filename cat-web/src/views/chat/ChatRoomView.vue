@@ -412,13 +412,12 @@ function subscribeToAgent(agentId: string) {
         cliStatus.value = null
       }
 
-      // 追加文本（如果内容不为空）- 无论是否选中都保存
-      if (data.content) {
-        const current = currentOutputs.value[agentId] || ''
-        currentOutputs.value[agentId] = current + data.content
-        // 更新历史（传入agentId）
-        updateAssistantMessage(currentOutputs.value[agentId], agentId)
-      }
+      // 追加文本（包括空字符串，用于触发消息更新）- 无论是否选中都保存
+      const content = data.content || ''
+      const current = currentOutputs.value[agentId] || ''
+      currentOutputs.value[agentId] = current + content
+      // 始终更新消息，确保消息存在
+      updateAssistantMessage(currentOutputs.value[agentId], agentId)
     } else if (data.type === 'done') {
       // 响应完成信号
       if (isSelected) {
