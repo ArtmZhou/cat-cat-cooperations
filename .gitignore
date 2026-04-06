@@ -1,0 +1,7 @@
+.claude
+.idea
+cat-standalone/data
+cat-standalone/logs
+cat-standalone/target
+cat-web/dist
+cat-web/node_modules

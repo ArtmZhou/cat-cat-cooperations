@@ -1,0 +1,723 @@
+{
+  "projectName": "cat-cat-cooperations",
+  "version": "1.1.0",
+  "createdAt": "2026-03-08",
+  "waves": [
+    {
+      "id": 1,
+      "date": "2026-04-04",
+      "description": "Agent管理重构：对接真实CLI Agent工具（Claude Code/OpenCode）"
+    }
+  ],
+  "features": [
+    {
+      "id": "FEAT-001",
+      "name": "用户认证模块",
+      "description": "实现用户登录、登出、Token刷新等认证功能",
+      "status": "passing",
+      "priority": "high",
+      "estimatedHours": 8,
+      "dependencies": [],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "用户可以通过用户名密码登录",
+        "登录成功返回JWT Token",
+        "Token过期后可以刷新",
+        "用户可以正常登出"
+      ]
+    },
+    {
+      "id": "FEAT-002",
+      "name": "用户管理模块",
+      "description": "实现用户的增删改查功能",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [
+        "FEAT-001"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "可以创建新用户",
+        "可以编辑用户信息",
+        "可以删除用户",
+        "可以查看用户列表"
+      ]
+    },
+    {
+      "id": "FEAT-003",
+      "name": "角色权限管理",
+      "description": "实现RBAC角色权限控制",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [
+        "FEAT-001"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "可以创建角色",
+        "可以为角色分配权限",
+        "可以为用户分配角色",
+        "API接口有权限校验"
+      ]
+    },
+    {
+      "id": "FEAT-004",
+      "name": "[DEPRECATED] 内置Agent创建与管理",
+      "description": "已被FEAT-032取代",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [
+        "FEAT-001"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [],
+      "deprecated": true,
+      "deprecatedReason": "Wave 1: 重构为CLI Agent模式，被FEAT-032取代",
+      "supersededBy": "FEAT-032"
+    },
+    {
+      "id": "FEAT-005",
+      "name": "CLI Agent能力管理",
+      "description": "实现CLI Agent能力声明与匹配功能，支持能力类型和领域标签",
+      "status": "failing",
+      "wave": 1,
+      "priority": "high",
+      "dependencies": [
+        "FEAT-032"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "Given 创建CLI Agent时, When 声明能力类型和领域标签, Then 能力被正确存储",
+        "Given 查询具备特定能力的Agent, When 提供能力类型或领域标签, Then 返回匹配的Agent列表",
+        "Given 创建任务, When 任务需要特定能力, Then 系统自动匹配最合适的Agent"
+      ]
+    },
+    {
+      "id": "FEAT-006",
+      "name": "CLI Agent状态监控",
+      "description": "实现CLI Agent进程状态、执行状态、资源占用、输出日志和Token使用的监控",
+      "status": "failing",
+      "wave": 1,
+      "priority": "high",
+      "dependencies": [
+        "FEAT-033"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "Given CLI Agent正在运行, When 用户查看状态, Then 显示进程状态和资源占用",
+        "Given CLI Agent正在执行任务, When 用户查看状态, Then 显示执行状态和进度",
+        "Given CLI Agent输出日志, When 用户请求日志, Then 返回最近的输出日志",
+        "Given CLI Agent使用Token, When 任务完成, Then Token使用量被正确统计"
+      ]
+    },
+    {
+      "id": "FEAT-007",
+      "name": "[DEPRECATED] 外部Agent接入",
+      "description": "已被CLI Agent模式取代",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [],
+      "deprecated": true,
+      "deprecatedReason": "Wave 1: CLI Agent模式取代了原有的外部Agent接入机制"
+    },
+    {
+      "id": "FEAT-008",
+      "name": "CLI Agent任务执行",
+      "description": "实现CLI Agent任务执行，支持混合输入（自然语言Prompt/JSON/文件路径）",
+      "status": "failing",
+      "wave": 1,
+      "priority": "high",
+      "dependencies": [
+        "FEAT-034"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "Given 创建任务, When 选择自然语言输入, Then CLI接收Prompt并执行",
+        "Given 创建任务, When 选择JSON输入, Then CLI接收结构化参数",
+        "Given 创建任务, When 选择文件路径输入, Then CLI读取文件内容作为输入",
+        "Given 任务正在执行, When CLI输出结果, Then 结果被正确收集和存储"
+      ]
+    },
+    {
+      "id": "FEAT-009",
+      "name": "任务调度服务",
+      "description": "实现任务的立即执行、定时执行、周期执行",
+      "status": "passing",
+      "priority": "medium",
+      "dependencies": [
+        "FEAT-008"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "支持立即执行任务",
+        "支持定时执行任务",
+        "支持周期性执行任务",
+        "可以取消定时任务"
+      ]
+    },
+    {
+      "id": "FEAT-010",
+      "name": "流程化任务编排",
+      "description": "实现多步骤流程化任务的编排和执行",
+      "status": "passing",
+      "priority": "medium",
+      "dependencies": [
+        "FEAT-008"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "支持创建多步骤任务",
+        "步骤按顺序执行",
+        "步骤间可传递数据",
+        "支持步骤失败重试"
+      ]
+    },
+    {
+      "id": "FEAT-011",
+      "name": "并行任务处理",
+      "description": "实现多Agent并行处理任务",
+      "status": "passing",
+      "priority": "medium",
+      "dependencies": [
+        "FEAT-008"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "支持创建并行任务",
+        "多个Agent同时执行",
+        "支持结果合并",
+        "支持部分失败处理"
+      ]
+    },
+    {
+      "id": "FEAT-012",
+      "name": "协商决策机制",
+      "description": "实现Agent间的投票协商机制",
+      "status": "passing",
+      "priority": "low",
+      "dependencies": [
+        "FEAT-008",
+        "FEAT-015"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "支持创建协商任务",
+        "Agent可以进行投票",
+        "支持设置决策阈值",
+        "记录协商过程"
+      ]
+    },
+    {
+      "id": "FEAT-013",
+      "name": "任务状态追踪",
+      "description": "实现任务执行状态的实时追踪",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [
+        "FEAT-008"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "实时更新任务状态",
+        "支持进度百分比显示",
+        "支持执行日志查看",
+        "支持结果查看和导出"
+      ]
+    },
+    {
+      "id": "FEAT-014",
+      "name": "Agent间消息通信",
+      "description": "实现Agent间的消息传递机制",
+      "status": "failing",
+      "wave": 1,
+      "priority": "medium",
+      "dependencies": [
+        "FEAT-032"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "支持点对点消息",
+        "支持广播消息",
+        "消息传递延迟<100ms",
+        "支持消息确认机制"
+      ]
+    },
+    {
+      "id": "FEAT-015",
+      "name": "WebSocket连接管理",
+      "description": "实现WebSocket连接和消息推送",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [
+        "FEAT-001"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "支持WebSocket连接",
+        "支持消息推送",
+        "支持心跳保活",
+        "支持断线重连"
+      ]
+    },
+    {
+      "id": "FEAT-016",
+      "name": "操作审计日志",
+      "description": "实现关键操作的审计日志记录",
+      "status": "passing",
+      "priority": "medium",
+      "dependencies": [
+        "FEAT-001"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "记录用户登录登出",
+        "记录Agent操作",
+        "记录任务操作",
+        "支持日志查询和导出"
+      ]
+    },
+    {
+      "id": "FEAT-017",
+      "name": "系统监控服务",
+      "description": "实现系统运行状态和性能指标监控",
+      "status": "passing",
+      "priority": "medium",
+      "dependencies": [],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "监控系统资源使用",
+        "监控Agent在线数量",
+        "监控任务执行统计",
+        "提供监控仪表盘数据"
+      ]
+    },
+    {
+      "id": "FEAT-018",
+      "name": "告警服务",
+      "description": "实现系统告警规则和通知",
+      "status": "passing",
+      "priority": "low",
+      "dependencies": [
+        "FEAT-017"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "支持自定义告警规则",
+        "告警及时触发",
+        "告警记录可查询",
+        "支持告警确认"
+      ]
+    },
+    {
+      "id": "FEAT-019",
+      "name": "[DEPRECATED] 内置Agent命令执行器",
+      "description": "已被CLI Agent模式取代",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [],
+      "deprecated": true,
+      "deprecatedReason": "Wave 1: CLI Agent直接调用外部CLI，不再需要内置执行器"
+    },
+    {
+      "id": "FEAT-020",
+      "name": "[DEPRECATED] 内置Agent API调用执行器",
+      "description": "已被CLI Agent模式取代",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [],
+      "deprecated": true,
+      "deprecatedReason": "Wave 1: CLI Agent直接调用外部CLI，不再需要内置执行器"
+    },
+    {
+      "id": "FEAT-021",
+      "name": "[DEPRECATED] 内置Agent文件处理执行器",
+      "description": "已被CLI Agent模式取代",
+      "status": "passing",
+      "priority": "medium",
+      "dependencies": [],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [],
+      "deprecated": true,
+      "deprecatedReason": "Wave 1: CLI Agent直接调用外部CLI，不再需要内置执行器"
+    },
+    {
+      "id": "FEAT-022",
+      "name": "[DEPRECATED] 内置Agent文本处理执行器",
+      "description": "已被CLI Agent模式取代",
+      "status": "passing",
+      "priority": "medium",
+      "dependencies": [],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [],
+      "deprecated": true,
+      "deprecatedReason": "Wave 1: CLI Agent直接调用外部CLI，不再需要内置执行器"
+    },
+    {
+      "id": "FEAT-023",
+      "name": "[DEPRECATED] MCP协议适配器",
+      "description": "已被CLI Agent模式取代",
+      "status": "passing",
+      "priority": "medium",
+      "dependencies": [],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [],
+      "deprecated": true,
+      "deprecatedReason": "Wave 1: CLI Agent模式取代了MCP协议适配器"
+    },
+    {
+      "id": "FEAT-024",
+      "name": "API网关路由",
+      "description": "实现API网关的路由和认证功能",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [
+        "FEAT-001"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "支持路由转发",
+        "支持Token验证",
+        "支持请求限流",
+        "支持请求日志"
+      ]
+    },
+    {
+      "id": "FEAT-025",
+      "name": "前端登录页面",
+      "description": "实现猫猫主题风格的登录页面",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [],
+      "module": "cat-web",
+      "acceptanceCriteria": [
+        "猫猫主题风格设计",
+        "支持用户名密码登录",
+        "登录成功跳转仪表盘",
+        "支持登录错误提示"
+      ]
+    },
+    {
+      "id": "FEAT-026",
+      "name": "前端仪表盘页面",
+      "description": "实现系统概览仪表盘",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [
+        "FEAT-025"
+      ],
+      "module": "cat-web",
+      "acceptanceCriteria": [
+        "展示关键指标卡片",
+        "展示任务趋势图",
+        "展示Agent状态分布",
+        "展示最近任务列表"
+      ]
+    },
+    {
+      "id": "FEAT-027",
+      "name": "前端CLI Agent管理页面",
+      "description": "实现CLI Agent列表和管理功能页面，支持模板选择、配置编辑、状态监控",
+      "status": "failing",
+      "wave": 1,
+      "priority": "high",
+      "dependencies": [
+        "FEAT-025",
+        "FEAT-031",
+        "FEAT-032"
+      ],
+      "module": "cat-web",
+      "acceptanceCriteria": [
+        "展示CLI Agent列表，包含模板类型、状态、Token使用量",
+        "支持选择模板创建CLI Agent",
+        "支持编辑CLI配置（启动参数、环境变量）",
+        "支持查看Agent详情和实时输出日志",
+        "支持启动/停止/重启CLI Agent"
+      ]
+    },
+    {
+      "id": "FEAT-028",
+      "name": "前端任务管理页面",
+      "description": "实现任务列表和管理功能页面",
+      "status": "passing",
+      "priority": "high",
+      "dependencies": [
+        "FEAT-025",
+        "FEAT-008"
+      ],
+      "module": "cat-web",
+      "acceptanceCriteria": [
+        "展示任务列表",
+        "支持任务搜索筛选",
+        "支持创建任务弹窗",
+        "支持任务详情和日志查看"
+      ]
+    },
+    {
+      "id": "FEAT-029",
+      "name": "前端监控页面",
+      "description": "实现系统监控仪表盘页面",
+      "status": "passing",
+      "priority": "medium",
+      "dependencies": [
+        "FEAT-025",
+        "FEAT-017"
+      ],
+      "module": "cat-web",
+      "acceptanceCriteria": [
+        "展示系统资源监控",
+        "展示Agent状态监控",
+        "展示任务执行统计",
+        "支持历史数据查询"
+      ]
+    },
+    {
+      "id": "FEAT-030",
+      "name": "前端用户管理页面",
+      "description": "实现用户和角色管理页面",
+      "status": "passing",
+      "priority": "medium",
+      "dependencies": [
+        "FEAT-025",
+        "FEAT-002",
+        "FEAT-003"
+      ],
+      "module": "cat-web",
+      "acceptanceCriteria": [
+        "展示用户列表",
+        "支持创建/编辑用户",
+        "展示角色列表",
+        "支持角色权限配置"
+      ]
+    },
+    {
+      "id": "FEAT-031",
+      "name": "CLI Agent模板管理",
+      "description": "实现Claude Code/OpenCode内置配置模板，支持模板参数配置",
+      "status": "passing",
+      "wave": 1,
+      "priority": "high",
+      "dependencies": [
+        "FEAT-001"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "Given 用户请求模板列表, When 调用模板API, Then 返回Claude Code和OpenCode模板",
+        "Given 用户选择Claude Code模板, When 查看模板详情, Then 显示必需参数(ANTHROPIC_API_KEY)和可选参数",
+        "Given 用户选择OpenCode模板, When 查看模板详情, Then 显示必需参数(OPENAI_API_KEY)和可选参数",
+        "Given 管理员创建自定义模板, When 提供CLI配置, Then 模板被存储并可被使用"
+      ]
+    },
+    {
+      "id": "FEAT-032",
+      "name": "CLI Agent实例管理",
+      "description": "基于模板创建CLI Agent实例，配置启动参数、环境变量、配置文件，supersedes FEAT-004",
+      "status": "passing",
+      "wave": 1,
+      "priority": "high",
+      "dependencies": [
+        "FEAT-031"
+      ],
+      "module": "cat-standalone",
+      "supersedes": "FEAT-004",
+      "acceptanceCriteria": [
+        "Given 用户选择模板, When 创建CLI Agent, Then Agent配置被持久化存储",
+        "Given 用户配置环境变量, When 保存配置, Then 敏感信息被加密存储",
+        "Given 用户查看Agent列表, When 请求列表, Then 显示Agent状态和模板类型",
+        "Given 用户删除Agent, When 确认删除, Then Agent配置和相关数据被清理"
+      ]
+    },
+    {
+      "id": "FEAT-033",
+      "name": "CLI进程生命周期管理",
+      "description": "CLI进程启动、监控、终止、异常重启",
+      "status": "failing",
+      "wave": 1,
+      "priority": "high",
+      "dependencies": [
+        "FEAT-032"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "Given Agent配置完成, When 用户启动Agent, Then CLI进程成功启动并返回PID",
+        "Given CLI进程运行中, When 系统监控检测到进程异常, Then 自动重启进程",
+        "Given 用户停止Agent, When 发送停止命令, Then CLI进程被正确终止",
+        "Given CLI进程运行中, When 用户重启Agent, Then 进程先停止后启动"
+      ]
+    },
+    {
+      "id": "FEAT-034",
+      "name": "CLI持久会话通信",
+      "description": "stdin/stdout持久会话，任务输入和流式输出",
+      "status": "failing",
+      "wave": 1,
+      "priority": "high",
+      "dependencies": [
+        "FEAT-033"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "Given CLI进程已启动, When 建立会话, Then stdin/stdout管道正确连接",
+        "Given 会话已建立, When 发送任务输入到stdin, Then CLI正确接收并处理",
+        "Given CLI正在输出, When stdout有新内容, Then 输出被实时捕获",
+        "Given CLI输出流式数据, When 解析JSON行, Then 结构化输出被提取"
+      ]
+    },
+    {
+      "id": "FEAT-035",
+      "name": "流式输出WebSocket推送",
+      "description": "CLI输出实时WebSocket推送至前端",
+      "status": "failing",
+      "wave": 1,
+      "priority": "high",
+      "dependencies": [
+        "FEAT-034",
+        "FEAT-015"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "Given 前端订阅Agent输出, When CLI输出新内容, Then WebSocket实时推送",
+        "Given 前端订阅Token更新, When Token使用变化, Then WebSocket推送更新",
+        "Given WebSocket连接断开, When 重新连接, Then 自动恢复订阅",
+        "Given 多个前端客户端订阅同一Agent, When CLI输出, Then 所有客户端收到推送"
+      ]
+    },
+    {
+      "id": "FEAT-036",
+      "name": "CLI任务执行控制",
+      "description": "超时控制、手动取消、并发限制",
+      "status": "failing",
+      "wave": 1,
+      "priority": "high",
+      "dependencies": [
+        "FEAT-034"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "Given 任务开始执行, When 超过配置的超时时间, Then 任务被强制取消",
+        "Given 任务正在执行, When 用户点击取消, Then CLI收到取消信号并停止",
+        "Given 系统并发限制为10, When 第11个任务请求, Then 请求排队等待",
+        "Given 任务被取消, When CLI支持取消, Then 资源被正确释放"
+      ]
+    },
+    {
+      "id": "FEAT-037",
+      "name": "Token使用统计",
+      "description": "从CLI输出解析Token使用信息，API查询补充",
+      "status": "failing",
+      "wave": 1,
+      "priority": "medium",
+      "dependencies": [
+        "FEAT-034"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "Given Claude Code输出包含usage字段, When 解析输出, Then input_tokens和output_tokens被提取",
+        "Given OpenCode输出包含Token信息, When 正则匹配, Then Token数量被提取",
+        "Given Token使用记录, When 查询统计, Then 返回按时间聚合的使用量",
+        "Given Agent执行多个任务, When 查询Token使用, Then 显示总量和费用估算"
+      ]
+    }
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "name": "基础认证和Agent管理",
+      "features": [
+        "FEAT-001",
+        "FEAT-004",
+        "FEAT-005",
+        "FEAT-006"
+      ],
+      "targetDate": "2026-03-15"
+    },
+    {
+      "id": "M2",
+      "name": "核心任务执行",
+      "features": [
+        "FEAT-008",
+        "FEAT-013",
+        "FEAT-019",
+        "FEAT-020"
+      ],
+      "targetDate": "2026-03-22"
+    },
+    {
+      "id": "M3",
+      "name": "前端核心页面",
+      "features": [
+        "FEAT-025",
+        "FEAT-026",
+        "FEAT-027",
+        "FEAT-028"
+      ],
+      "targetDate": "2026-03-29"
+    },
+    {
+      "id": "M4",
+      "name": "高级功能完善",
+      "features": [
+        "FEAT-010",
+        "FEAT-011",
+        "FEAT-014",
+        "FEAT-015",
+        "FEAT-023"
+      ],
+      "targetDate": "2026-04-05"
+    },
+    {
+      "id": "M5",
+      "name": "监控和运维",
+      "features": [
+        "FEAT-016",
+        "FEAT-017",
+        "FEAT-018",
+        "FEAT-029"
+      ],
+      "targetDate": "2026-04-12"
+    },
+    {
+      "id": "M6",
+      "name": "CLI Agent重构",
+      "features": [
+        "FEAT-031",
+        "FEAT-032",
+        "FEAT-033",
+        "FEAT-034",
+        "FEAT-035",
+        "FEAT-036",
+        "FEAT-037"
+      ],
+      "targetDate": "2026-04-20"
+    }
+  ],
+  "constraints": [
+    {
+      "id": "CON-001",
+      "description": "CLI Agent需要系统支持进程管理和管道通信"
+    },
+    {
+      "id": "CON-002",
+      "description": "敏感配置（API Key）需要加密存储"
+    },
+    {
+      "id": "CON-003",
+      "description": "WebSocket需要支持高并发连接"
+    }
+  ],
+  "assumptions": [
+    {
+      "id": "ASM-001",
+      "description": "Claude Code和OpenCode CLI已安装并可执行"
+    },
+    {
+      "id": "ASM-002",
+      "description": "用户已获取相应的API Key（Anthropic/OpenAI）"
+    }
+  ]
+}
