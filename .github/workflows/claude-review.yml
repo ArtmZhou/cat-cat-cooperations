@@ -29,9 +29,9 @@ jobs:
         uses: anthropics/claude-code-action@v1
         env:
           ANTHROPIC_BASE_URL: https://coding.dashscope.aliyuncs.com/apps/anthropic
-          ANTHROPIC_MODEL: kimi-k2.5
+          ANTHROPIC_MODEL: glm-5
         with:
-          model: "kimi-k2.5"
+          model: glm-5
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           track_progress: true
           prompt: |
