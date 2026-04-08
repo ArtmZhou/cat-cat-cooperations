@@ -622,6 +622,27 @@
         "Given Token使用记录, When 查询统计, Then 返回按时间聚合的使用量",
         "Given Agent执行多个任务, When 查询Token使用, Then 显示总量和费用估算"
       ]
+    },
+    {
+      "id": "FEAT-038",
+      "name": "多Agent聊天室增强",
+      "description": "实现多Agent同时参与的聊天室，支持@提及和消息广播",
+      "status": "in_progress",
+      "wave": 2,
+      "priority": "high",
+      "dependencies": [
+        "FEAT-032",
+        "FEAT-034",
+        "FEAT-035"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "Given 用户创建聊天室, When 选择多个Agent成员, Then 聊天室创建成功",
+        "Given 用户在聊天室发送消息, When 使用@AgentA, Then 只有AgentA接收处理",
+        "Given 用户在聊天室发送消息, When 不使用@, Then 所有Agent接收处理",
+        "Given Agent响应消息, When 输出完成, Then 响应自动推送到聊天室",
+        "Given 多个Agent同时响应, When 消息返回, Then 前端正确显示来源Agent身份"
+      ]
     }
   ],
   "milestones": [
@@ -694,6 +715,14 @@
         "FEAT-037"
       ],
       "targetDate": "2026-04-20"
+    },
+    {
+      "id": "M7",
+      "name": "多Agent聊天室",
+      "features": [
+        "FEAT-038"
+      ],
+      "targetDate": "2026-04-30"
     }
   ],
   "constraints": [

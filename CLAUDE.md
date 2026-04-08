@@ -82,6 +82,7 @@ cat-cat-cooperations/
 ├── cat-standalone/    # Standalone module - all backend code
 │   ├── src/main/java/com/cat/standalone/    # Core services
 │   ├── src/main/java/com/cat/cliagent/      # CLI Agent services
+│   ├── src/main/java/com/cat/chatroom/      # Multi-Agent chat room services
 │   └── data/                                # JSON data files
 └── cat-web/           # Vue 3 frontend SPA
     └── src/
@@ -130,6 +131,7 @@ cat-cat-cooperations/
 - `task_logs.json` - Task execution logs
 - `token_usage_logs.json` - Token usage records
 - `cli_agent_output_logs.json` - CLI Agent output logs (每Agent最多100条)
+- `chat_rooms.json` - Multi-Agent chat rooms with message history
 
 **Format:** Jackson with Java 8 time support
 
@@ -160,6 +162,16 @@ cat-cat-cooperations/
 **Task Management:**
 - `GET/POST /api/v1/tasks` - Task list/create
 - `POST /api/v1/tasks/{id}/cancel` - Cancel task
+
+**Multi-Agent Chat Room:**
+- `GET/POST /api/v1/chat-rooms` - Chat room list/create
+- `GET/PUT/DELETE /api/v1/chat-rooms/{id}` - Chat room operations
+- `POST /api/v1/chat-rooms/{id}/messages` - Send message with @mention support
+- `GET /api/v1/chat-rooms/{id}/messages` - Get message history
+- `POST /api/v1/chat-rooms/{id}/agents` - Add agent to room
+- `DELETE /api/v1/chat-rooms/{id}/agents/{agentId}` - Remove agent from room
+- WebSocket `/topic/chat-room/{roomId}/messages` - Real-time room messages
+- WebSocket `/topic/chat-room/{roomId}/agents` - Agent status updates
 
 ## Development Workflow
 
