@@ -212,7 +212,11 @@ import {
   syncFromBranch,
   type WorkspaceInfo,
   type WorkspaceGitStatus,
-  type ConflictCheckResult
+  type CommitResult,
+  type PushResult,
+  type MergeResult,
+  type ConflictCheckResult,
+  type SyncResult
 } from '@/api/workspace'
 
 // State
@@ -235,7 +239,8 @@ async function loadWorkspaces() {
   loading.value = true
   try {
     const res = await listWorkspaces(projectPathFilter.value || undefined)
-    workspaces.value = (res as any)?.data || res || []
+    // request interceptor 已经解包了 ApiResponse，res 直接就是 data
+    workspaces.value = (res as WorkspaceInfo[]) || []
   } catch (e: any) {
     ElMessage.error('加载工作空间列表失败: ' + (e.message || e))
   } finally {
@@ -296,7 +301,7 @@ async function viewGitStatus(workspaceId: string) {
   loadingGitStatus.value = true
   try {
     const res = await getWorkspaceGitStatus(workspaceId)
-    gitStatus.value = (res as any)?.data || res
+    gitStatus.value = (res as WorkspaceGitStatus)
   } catch (e: any) {
     ElMessage.error('获取Git状态失败: ' + (e.message || e))
   } finally {
@@ -323,8 +328,7 @@ async function handleCommit() {
   }
   committing.value = true
   try {
-    const res = await commitChanges(currentCommitWorkspaceId.value, commitForm.value.message)
-    const result = (res as any)?.data || res
+    const result = await commitChanges(currentCommitWorkspaceId.value, commitForm.value.message) as unknown as CommitResult
     if (result?.success) {
       ElMessage.success('提交成功: ' + (result.commitHash?.substring(0, 8) || ''))
     } else {
@@ -342,8 +346,7 @@ async function handleCommit() {
 // Push
 async function handlePush(workspaceId: string) {
   try {
-    const res = await pushBranch(workspaceId)
-    const result = (res as any)?.data || res
+    const result = await pushBranch(workspaceId) as unknown as PushResult
     if (result?.success) {
       ElMessage.success('推送成功')
     } else {
@@ -372,8 +375,8 @@ function openMergeDialog(workspaceId: string) {
 async function handleCheckConflicts() {
   checkingConflicts.value = true
   try {
-    const res = await checkConflicts(currentMergeWorkspaceId.value, mergeForm.value.targetBranch)
-    conflictResult.value = (res as any)?.data || res
+    const result = await checkConflicts(currentMergeWorkspaceId.value, mergeForm.value.targetBranch) as unknown as ConflictCheckResult
+    conflictResult.value = result
   } catch (e: any) {
     ElMessage.error('冲突检测失败: ' + (e.message || e))
   } finally {
@@ -384,8 +387,7 @@ async function handleCheckConflicts() {
 async function handleMerge() {
   merging.value = true
   try {
-    const res = await mergeBranch(currentMergeWorkspaceId.value, mergeForm.value.targetBranch)
-    const result = (res as any)?.data || res
+    const result = await mergeBranch(currentMergeWorkspaceId.value, mergeForm.value.targetBranch) as unknown as MergeResult
     if (result?.success) {
       ElMessage.success('合并成功')
       mergeDialogVisible.value = false
@@ -405,8 +407,7 @@ async function handleMerge() {
 // Sync
 async function handleSync(workspaceId: string, baseBranch: string) {
   try {
-    const res = await syncFromBranch(workspaceId, baseBranch)
-    const result = (res as any)?.data || res
+    const result = await syncFromBranch(workspaceId, baseBranch) as unknown as SyncResult
     if (result?.success) {
       ElMessage.success('同步成功 (策略: ' + result.strategy + ')')
     } else if (result?.hasConflicts) {

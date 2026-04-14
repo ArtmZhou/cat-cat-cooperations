@@ -13,8 +13,11 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 /**
@@ -35,6 +38,13 @@ import java.util.stream.Collectors;
 public class LocalWorkspaceService implements WorkspaceService {
 
     private final JsonFileStore<StoredWorkspace> workspaceStore;
+
+    /**
+     * Lock for operations that modify the main repo's checkout state (merge, checkConflicts).
+     * Multiple concurrent merge/conflict-check operations on the same project would corrupt
+     * each other's branch checkout. This lock serializes these operations.
+     */
+    private final ReentrantLock mainRepoLock = new ReentrantLock();
 
     @Value("${cat.workspace.worktree-dir-name:.worktrees}")
     private String worktreeDirName;
@@ -311,11 +321,13 @@ public class LocalWorkspaceService implements WorkspaceService {
             // git commit -m "message"
             GitCommandResult commitResult = executeGitCommand(worktreePath, "commit", "-m", commitMessage);
             if (!commitResult.success()) {
-                // 可能没有变更需要提交
-                if (commitResult.error().contains("nothing to commit")) {
+                // 可能没有变更需要提交 - git outputs "nothing to commit" to stdout (not stderr)
+                String combinedOutput = (commitResult.output() != null ? commitResult.output() : "")
+                    + (commitResult.error() != null ? commitResult.error() : "");
+                if (combinedOutput.contains("nothing to commit")) {
                     return new CommitResult(true, null, "Nothing to commit", null);
                 }
-                return new CommitResult(false, null, null, "git commit failed: " + commitResult.error());
+                return new CommitResult(false, null, null, "git commit failed: " + combinedOutput);
             }
 
             // 获取提交hash
@@ -371,10 +383,11 @@ public class LocalWorkspaceService implements WorkspaceService {
         StoredWorkspace workspace = workspaceStore.findById(workspaceId)
             .orElseThrow(() -> new BusinessException(404, "工作空间不存在: " + workspaceId));
 
-        // 合并操作在主仓库中执行
+        // 合并操作在主仓库中执行，需要加锁防止并发checkout冲突
         String projectPath = workspace.getProjectPath();
         String sourceBranch = workspace.getBranchName();
 
+        mainRepoLock.lock();
         try {
             // 先切换到目标分支
             GitCommandResult checkoutResult = executeGitCommand(projectPath, "checkout", targetBranch);
@@ -418,6 +431,8 @@ public class LocalWorkspaceService implements WorkspaceService {
             // 尝试恢复到目标分支
             executeGitCommand(projectPath, "merge", "--abort");
             return new MergeResult(false, null, sourceBranch, targetBranch, false, List.of(), e.getMessage());
+        } finally {
+            mainRepoLock.unlock();
         }
     }
 
@@ -429,6 +444,7 @@ public class LocalWorkspaceService implements WorkspaceService {
         String projectPath = workspace.getProjectPath();
         String sourceBranch = workspace.getBranchName();
 
+        mainRepoLock.lock();
         try {
             // 使用 git merge --no-commit --no-ff 进行预检
             // 先保存当前分支
@@ -457,8 +473,7 @@ public class LocalWorkspaceService implements WorkspaceService {
             int changedFiles = (int) diffOutput.lines().filter(l -> !l.isBlank()).count();
 
             // 中止合并，恢复原状态（仅在合并进行中时中止）
-            File mergeHead = new File(projectPath, ".git/MERGE_HEAD");
-            if (mergeHead.exists()) {
+            if (isMergeInProgress(projectPath)) {
                 executeGitCommand(projectPath, "merge", "--abort");
             } else {
                 // 没有merge状态但有暂存内容，重置
@@ -471,11 +486,12 @@ public class LocalWorkspaceService implements WorkspaceService {
         } catch (Exception e) {
             log.error("Failed to check conflicts for workspace: {}", workspaceId, e);
             // 尝试恢复（仅在合并进行中时中止）
-            File mergeHead = new File(projectPath, ".git/MERGE_HEAD");
-            if (mergeHead.exists()) {
+            if (isMergeInProgress(projectPath)) {
                 executeGitCommand(projectPath, "merge", "--abort");
             }
             return new ConflictCheckResult(false, List.of(), 0, e.getMessage());
+        } finally {
+            mainRepoLock.unlock();
         }
     }
 
@@ -518,10 +534,8 @@ public class LocalWorkspaceService implements WorkspaceService {
 
         } catch (Exception e) {
             log.error("Failed to sync workspace {} from {}", workspaceId, sourceBranch, e);
-            // 仅在rebase进行中时中止
-            File rebaseDir = new File(worktreePath, ".git/rebase-merge");
-            File rebaseApplyDir = new File(worktreePath, ".git/rebase-apply");
-            if (rebaseDir.exists() || rebaseApplyDir.exists()) {
+            // 仅在rebase进行中时中止（使用正确的git目录检测）
+            if (isRebaseInProgress(worktreePath)) {
                 executeGitCommand(worktreePath, "rebase", "--abort");
             }
             return new SyncResult(false, "rebase", false, List.of(), e.getMessage());
@@ -529,6 +543,44 @@ public class LocalWorkspaceService implements WorkspaceService {
     }
 
     // ===== Helper Methods =====
+
+    /**
+     * 解析给定路径的实际 git 目录。
+     * 对于主仓库，返回 repoPath/.git
+     * 对于 worktree，.git 是一个文件，内容形如 "gitdir: /path/to/main/.git/worktrees/name"，
+     * 需要解析出实际目录。
+     * 最可靠的方式是使用 git rev-parse --git-dir。
+     */
+    private String resolveGitDir(String repoPath) {
+        String gitDir = getGitOutput(repoPath, "rev-parse", "--git-dir").trim();
+        if (gitDir.isEmpty()) {
+            // fallback: 尝试 .git 目录
+            return new File(repoPath, ".git").getAbsolutePath();
+        }
+        // git rev-parse --git-dir may return relative path
+        File gitDirFile = new File(gitDir);
+        if (!gitDirFile.isAbsolute()) {
+            gitDirFile = new File(repoPath, gitDir);
+        }
+        return gitDirFile.getAbsolutePath();
+    }
+
+    /**
+     * 检查是否处于 merge 状态（MERGE_HEAD 文件存在于实际 git 目录中）
+     */
+    private boolean isMergeInProgress(String repoPath) {
+        String gitDir = resolveGitDir(repoPath);
+        return new File(gitDir, "MERGE_HEAD").exists();
+    }
+
+    /**
+     * 检查是否处于 rebase 状态
+     */
+    private boolean isRebaseInProgress(String repoPath) {
+        String gitDir = resolveGitDir(repoPath);
+        return new File(gitDir, "rebase-merge").exists()
+            || new File(gitDir, "rebase-apply").exists();
+    }
 
     private boolean checkBranchExists(String repoPath, String branchName) {
         GitCommandResult result = executeGitCommand(repoPath, "rev-parse", "--verify", branchName);
