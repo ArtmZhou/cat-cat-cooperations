@@ -115,9 +115,27 @@ cat-cat-cooperations/
 - `LocalCliAgentService` - Agent CRUD operations
 - `LocalCliSessionService` - Session & process management
 - `LocalCliProcessService` - Process lifecycle
-- `LocalCliTaskExecutionService` - Task execution
+- `LocalCliTaskExecutionService` - Task execution (supports workspace-based execution)
 - `LocalTokenUsageService` - Token usage tracking
 - `LocalCliOutputPushService` - WebSocket output push
+- `LocalWorkspaceService` - Git Worktree workspace management
+
+### Git Worktree Workspace Architecture
+
+**Multi-Agent Concurrent Development** via Git Worktree:
+- Each task gets an isolated worktree + branch
+- Agents work in separate file system directories, no conflicts
+- Supports commit, push, merge, conflict detection, and sync operations
+- See `docs/features/git-worktree-feature.md` for full design doc
+
+**Key Services:**
+- `WorkspaceService` - Workspace lifecycle interface
+- `LocalWorkspaceService` - Git worktree operations via CLI
+- `WorkspaceController` - REST API at `/api/v1/workspaces`
+
+**Configuration:**
+- `cat.workspace.worktree-dir-name` - Worktree directory name (default: `.worktrees`)
+- `cat.workspace.default-base-branch` - Default base branch (default: `main`)
 
 ### Data Storage
 
@@ -130,6 +148,7 @@ cat-cat-cooperations/
 - `task_logs.json` - Task execution logs
 - `token_usage_logs.json` - Token usage records
 - `cli_agent_output_logs.json` - CLI Agent output logs (每Agent最多100条)
+- `workspaces.json` - Git Worktree workspace state
 
 **Format:** Jackson with Java 8 time support
 
@@ -160,6 +179,19 @@ cat-cat-cooperations/
 **Task Management:**
 - `GET/POST /api/v1/tasks` - Task list/create
 - `POST /api/v1/tasks/{id}/cancel` - Cancel task
+
+**Workspace Management (Git Worktree):**
+- `POST /api/v1/workspaces` - Create workspace (worktree + branch)
+- `GET /api/v1/workspaces` - List workspaces
+- `GET /api/v1/workspaces/{id}` - Get workspace details
+- `DELETE /api/v1/workspaces/{id}` - Remove workspace
+- `GET /api/v1/workspaces/{id}/git-status` - Git status
+- `POST /api/v1/workspaces/{id}/commit` - Commit changes
+- `POST /api/v1/workspaces/{id}/push` - Push branch
+- `POST /api/v1/workspaces/{id}/merge` - Merge branch
+- `POST /api/v1/workspaces/{id}/check-conflicts` - Check conflicts
+- `POST /api/v1/workspaces/{id}/sync` - Sync from main branch
+- `POST /api/v1/cli-agents/{id}/tasks/execute-with-workspace` - Execute task in workspace
 
 ## Development Workflow
 

@@ -622,6 +622,29 @@
         "Given Token使用记录, When 查询统计, Then 返回按时间聚合的使用量",
         "Given Agent执行多个任务, When 查询Token使用, Then 显示总量和费用估算"
       ]
+    },
+    {
+      "id": "FEAT-038",
+      "name": "Git Worktree 多Agent并发协同开发",
+      "description": "基于Git Worktree实现多Agent并发开发的工作空间隔离。每个任务自动创建独立的worktree+分支，确保多Agent同时工作互不干扰。支持创建、查看、提交、推送、合并、冲突检测、同步等完整工作流。",
+      "status": "passing",
+      "priority": "high",
+      "estimatedHours": 16,
+      "dependencies": [
+        "FEAT-024"
+      ],
+      "module": "cat-standalone",
+      "acceptanceCriteria": [
+        "可创建基于Git Worktree的独立工作空间（worktree+分支）",
+        "多个工作空间可并行存在，文件系统互不干扰",
+        "支持在工作空间中提交、推送变更",
+        "支持合并分支到目标分支（如main），含冲突预检",
+        "支持同步主分支变更到工作空间（rebase）",
+        "支持删除工作空间（移除worktree和分支）",
+        "任务执行支持自动创建工作空间模式",
+        "前端提供工作空间管理页面（创建、状态查看、Git操作）",
+        "工作空间状态持久化到JSON文件存储"
+      ]
     }
   ],
   "milestones": [
