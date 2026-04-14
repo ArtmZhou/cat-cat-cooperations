@@ -46,14 +46,17 @@ public class LocalWorkspaceService implements WorkspaceService {
      */
     private final ReentrantLock mainRepoLock = new ReentrantLock();
 
-    @Value("${cat.workspace.worktree-dir-name:.worktrees}")
-    private String worktreeDirName;
+    private final String worktreeDirName;
 
-    @Value("${cat.workspace.default-base-branch:main}")
-    private String defaultBaseBranch;
+    private final String defaultBaseBranch;
 
-    public LocalWorkspaceService(JsonFileStore<StoredWorkspace> workspaceStore) {
+    public LocalWorkspaceService(
+            JsonFileStore<StoredWorkspace> workspaceStore,
+            @Value("${cat.workspace.worktree-dir-name:.worktrees}") String worktreeDirName,
+            @Value("${cat.workspace.default-base-branch:main}") String defaultBaseBranch) {
         this.workspaceStore = workspaceStore;
+        this.worktreeDirName = worktreeDirName;
+        this.defaultBaseBranch = defaultBaseBranch;
     }
 
     @Override
@@ -321,7 +324,9 @@ public class LocalWorkspaceService implements WorkspaceService {
             // git commit -m "message"
             GitCommandResult commitResult = executeGitCommand(worktreePath, "commit", "-m", commitMessage);
             if (!commitResult.success()) {
-                // 可能没有变更需要提交 - git outputs "nothing to commit" to stdout (not stderr)
+                // 可能没有变更需要提交 - git outputs "nothing to commit" to stdout (not stderr).
+                // 注意：此检测依赖 git 英文输出。在 LANG=C 或未本地化的环境中总是有效。
+                // 通过 GIT_TERMINAL_PROMPT=0 已确保一致性，但若 git 被本地化可能需要额外处理。
                 String combinedOutput = (commitResult.output() != null ? commitResult.output() : "")
                     + (commitResult.error() != null ? commitResult.error() : "");
                 if (combinedOutput.contains("nothing to commit")) {

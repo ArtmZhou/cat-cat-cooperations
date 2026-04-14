@@ -54,19 +54,10 @@ class LocalWorkspaceServiceTest {
         // Ensure we are on a branch called "main"
         exec(projectPath, "git", "branch", "-M", "main");
 
-        // Set up the workspace service
+        // Set up the workspace service with constructor injection (no reflection needed)
         JsonFileStore<StoredWorkspace> workspaceStore =
             new JsonFileStore<>(dataDir.toString(), "workspaces", StoredWorkspace.class);
-        workspaceService = new LocalWorkspaceService(workspaceStore);
-
-        // Use reflection to set the @Value properties (not Spring context)
-        var worktreeDirField = LocalWorkspaceService.class.getDeclaredField("worktreeDirName");
-        worktreeDirField.setAccessible(true);
-        worktreeDirField.set(workspaceService, ".worktrees");
-
-        var baseBranchField = LocalWorkspaceService.class.getDeclaredField("defaultBaseBranch");
-        baseBranchField.setAccessible(true);
-        baseBranchField.set(workspaceService, "main");
+        workspaceService = new LocalWorkspaceService(workspaceStore, ".worktrees", "main");
     }
 
     @Test

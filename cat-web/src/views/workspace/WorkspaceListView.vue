@@ -240,7 +240,7 @@ async function loadWorkspaces() {
   try {
     const res = await listWorkspaces(projectPathFilter.value || undefined)
     // request interceptor 已经解包了 ApiResponse，res 直接就是 data
-    workspaces.value = (res as WorkspaceInfo[]) || []
+    workspaces.value = (res as unknown as WorkspaceInfo[]) || []
   } catch (e: any) {
     ElMessage.error('加载工作空间列表失败: ' + (e.message || e))
   } finally {
@@ -301,7 +301,7 @@ async function viewGitStatus(workspaceId: string) {
   loadingGitStatus.value = true
   try {
     const res = await getWorkspaceGitStatus(workspaceId)
-    gitStatus.value = (res as WorkspaceGitStatus)
+    gitStatus.value = (res as unknown as WorkspaceGitStatus)
   } catch (e: any) {
     ElMessage.error('获取Git状态失败: ' + (e.message || e))
   } finally {
