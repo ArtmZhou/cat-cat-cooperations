@@ -27,6 +27,11 @@ const routes = [
         component: () => import('@/views/chat/ChatRoomView.vue')
       },
       {
+        path: 'group-chat',
+        name: 'GroupChat',
+        component: () => import('@/views/groupChat/GroupChatView.vue')
+      },
+      {
         path: 'cli-agents',
         name: 'CliAgentList',
         component: () => import('@/views/cliAgent/CliAgentListView.vue')
