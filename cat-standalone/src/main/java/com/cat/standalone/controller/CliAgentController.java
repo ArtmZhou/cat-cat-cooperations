@@ -9,6 +9,7 @@ import com.cat.cliagent.service.TokenUsageService;
 import com.cat.common.model.ApiResponse;
 import com.cat.common.model.PageResult;
 import com.cat.standalone.service.LocalCliSessionService;
+import com.cat.standalone.service.LocalCliTaskExecutionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -190,6 +191,22 @@ public class CliAgentController {
         return ApiResponse.success("Task submitted");
     }
 
+    @Operation(summary = "使用工作空间执行任务", description = "在独立的Git Worktree工作空间中执行任务，支持多Agent并发开发")
+    @PostMapping("/{agentId}/tasks/execute-with-workspace")
+    public ApiResponse<String> executeTaskWithWorkspace(
+            @PathVariable String agentId,
+            @RequestBody WorkspaceTaskExecuteRequest request) {
+        ((LocalCliTaskExecutionService) taskExecutionService).executeTaskWithWorkspace(
+            agentId,
+            request.input(),
+            request.timeoutSeconds() != null ? request.timeoutSeconds() : 0,
+            request.projectPath(),
+            request.baseBranch(),
+            request.description()
+        );
+        return ApiResponse.success("Task with workspace submitted");
+    }
+
     @Operation(summary = "取消任务", description = "取消正在执行的任务")
     @PostMapping("/tasks/{taskId}/cancel")
     public ApiResponse<Boolean> cancelTask(@PathVariable String taskId) {
@@ -220,6 +237,15 @@ public class CliAgentController {
 
     // 任务执行请求DTO
     public record TaskExecuteRequest(String input, Integer timeoutSeconds) {}
+
+    // 工作空间任务执行请求DTO
+    public record WorkspaceTaskExecuteRequest(
+        String input,
+        Integer timeoutSeconds,
+        String projectPath,
+        String baseBranch,
+        String description
+    ) {}
 
     // ========== Token使用统计 ==========
 

@@ -62,6 +62,11 @@ const routes = [
         component: () => import('@/views/monitor/MonitorView.vue')
       },
       {
+        path: 'workspaces',
+        name: 'WorkspaceList',
+        component: () => import('@/views/workspace/WorkspaceListView.vue')
+      },
+      {
         path: 'users',
         name: 'UserManagement',
         component: () => import('@/views/user/UserManagementView.vue')

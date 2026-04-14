@@ -5,6 +5,7 @@ import com.cat.cliagent.service.CliAgentService;
 import com.cat.cliagent.service.CliOutputPushService;
 import com.cat.cliagent.service.CliSessionService;
 import com.cat.cliagent.service.CliTaskExecutionService;
+import com.cat.cliagent.service.WorkspaceService;
 import com.cat.common.exception.BusinessException;
 import com.cat.standalone.store.JsonFileStore;
 import com.cat.standalone.store.entity.StoredCliAgent;
@@ -21,6 +22,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  * CLI任务执行服务实现
  *
  * 负责任务的执行控制：超时、取消、并发限制
+ *
+ * 支持 Git Worktree 模式：
+ * - 当指定 projectPath 时，自动为任务创建独立的 worktree + 分支
+ * - 任务在独立的 worktree 目录中执行，互不干扰
+ * - 任务完成后可选择自动提交变更
+ * - 任务取消/失败时自动清理 worktree
  */
 @Slf4j
 @Service
@@ -37,6 +44,10 @@ public class LocalCliTaskExecutionService implements CliTaskExecutionService {
     @Autowired
     private CliOutputPushService outputPushService;
 
+    @Lazy
+    @Autowired
+    private WorkspaceService workspaceService;
+
     // 任务执行器
     private final ExecutorService taskExecutor = Executors.newCachedThreadPool();
 
@@ -48,6 +59,9 @@ public class LocalCliTaskExecutionService implements CliTaskExecutionService {
 
     // Agent并发计数
     private final Map<String, AtomicInteger> agentConcurrentCount = new ConcurrentHashMap<>();
+
+    // 任务与工作空间的映射（用于清理）
+    private final Map<String, String> taskWorkspaceMap = new ConcurrentHashMap<>();
 
     // 默认最大并发数
     private static final int DEFAULT_MAX_CONCURRENT = 3;
@@ -106,6 +120,140 @@ public class LocalCliTaskExecutionService implements CliTaskExecutionService {
         taskFutures.put(taskId, future);
 
         return future;
+    }
+
+    /**
+     * 使用Git Worktree模式执行任务
+     *
+     * 自动为任务创建独立的worktree工作空间，Agent在隔离环境中执行。
+     *
+     * @param agentId Agent ID
+     * @param input 输入内容
+     * @param timeoutSeconds 超时秒数
+     * @param projectPath 项目仓库路径
+     * @param baseBranch 基线分支
+     * @param taskDescription 任务描述（用于分支命名）
+     * @return 任务执行结果
+     */
+    public Future<TaskExecutionResult> executeTaskWithWorkspace(
+            String agentId, String input, int timeoutSeconds,
+            String projectPath, String baseBranch, String taskDescription) {
+
+        // 验证Agent存在且运行中
+        StoredCliAgent agent = cliAgentStore.findById(agentId)
+            .orElseThrow(() -> new BusinessException(404, "CLI Agent不存在: " + agentId));
+
+        if (!"RUNNING".equals(agent.getStatus()) && !"EXECUTING".equals(agent.getStatus())) {
+            throw new BusinessException(400, "Agent未处于运行状态");
+        }
+
+        if (!canAcceptTask(agentId)) {
+            throw new BusinessException(429, "Agent并发任务数已达上限");
+        }
+
+        agentConcurrentCount.computeIfAbsent(agentId, k -> new AtomicInteger(0)).incrementAndGet();
+
+        String taskId = UUID.randomUUID().toString();
+        int timeout = timeoutSeconds > 0 ? timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
+
+        TaskExecutionStatus status = new TaskExecutionStatus(
+            taskId, agentId, "PENDING", System.currentTimeMillis(), null, timeout, null, null
+        );
+        taskStatusMap.put(taskId, status);
+
+        // 提交带workspace的任务
+        Future<TaskExecutionResult> future = taskExecutor.submit(() ->
+            executeTaskWithWorkspaceInternal(taskId, agentId, input, timeout, projectPath, baseBranch, taskDescription)
+        );
+        taskFutures.put(taskId, future);
+
+        return future;
+    }
+
+    private TaskExecutionResult executeTaskWithWorkspaceInternal(
+            String taskId, String agentId, String input, int timeoutSeconds,
+            String projectPath, String baseBranch, String taskDescription) {
+
+        long startTime = System.currentTimeMillis();
+        StringBuilder outputBuilder = new StringBuilder();
+        StringBuilder errorBuilder = new StringBuilder();
+        String workspaceId = null;
+
+        try {
+            // 1. 创建独立工作空间
+            updateTaskStatus(taskId, "CREATING_WORKSPACE", null, null);
+            log.info("Creating workspace for task {} (agent: {}, project: {})", taskId, agentId, projectPath);
+
+            WorkspaceService.CreateWorkspaceRequest wsRequest = new WorkspaceService.CreateWorkspaceRequest(
+                projectPath,
+                null,   // 自动生成分支名
+                baseBranch != null ? baseBranch : "main",
+                taskId,
+                agentId,
+                taskDescription
+            );
+
+            WorkspaceService.WorkspaceInfo workspace = workspaceService.createWorkspace(wsRequest);
+            workspaceId = workspace.id();
+            taskWorkspaceMap.put(taskId, workspaceId);
+
+            log.info("Workspace created for task {}: {} (branch: {}, path: {})",
+                taskId, workspaceId, workspace.branchName(), workspace.worktreePath());
+
+            outputBuilder.append("[Workspace] Created: ").append(workspace.worktreePath())
+                .append(" (branch: ").append(workspace.branchName()).append(")\n");
+
+            // 2. 执行任务（在worktree目录中）
+            updateTaskStatus(taskId, "RUNNING", null, null);
+
+            if (outputPushService != null) {
+                outputPushService.pushStatusChange(agentId, "EXECUTING");
+            }
+
+            // 发送输入并启动流式读取
+            boolean sent = sessionService.sendInputWithStreaming(
+                agentId,
+                input,
+                line -> outputBuilder.append(line).append("\n"),
+                line -> errorBuilder.append(line).append("\n")
+            );
+
+            if (!sent) {
+                return completeTask(taskId, agentId, false, outputBuilder.toString(), errorBuilder.toString(),
+                    "Failed to send input", startTime);
+            }
+
+            Thread.sleep(Math.min(timeoutSeconds * 1000L, 5000));
+
+            outputBuilder.append("[Workspace] Task completed in workspace: ").append(workspace.worktreePath()).append("\n");
+
+            return completeTask(taskId, agentId, true, outputBuilder.toString(), errorBuilder.toString(), null, startTime);
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return completeTask(taskId, agentId, false, outputBuilder.toString(), errorBuilder.toString(),
+                "Task interrupted", startTime);
+        } catch (Exception e) {
+            log.error("Task execution with workspace failed: {}", taskId, e);
+            return completeTask(taskId, agentId, false, outputBuilder.toString(), errorBuilder.toString(),
+                e.getMessage(), startTime);
+        } finally {
+            AtomicInteger count = agentConcurrentCount.get(agentId);
+            if (count != null) {
+                count.decrementAndGet();
+            }
+
+            if (outputPushService != null) {
+                outputPushService.pushStatusChange(agentId, "RUNNING");
+            }
+        }
+    }
+
+    /**
+     * 获取任务关联的工作空间ID
+     */
+    public String getTaskWorkspaceId(String taskId) {
+        return taskWorkspaceMap.get(taskId);
     }
 
     private TaskExecutionResult executeTaskInternal(String taskId, String agentId, String input, int timeoutSeconds) {
