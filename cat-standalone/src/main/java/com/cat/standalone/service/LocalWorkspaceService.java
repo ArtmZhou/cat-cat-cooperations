@@ -452,20 +452,29 @@ public class LocalWorkspaceService implements WorkspaceService {
                 }
             }
 
-            // 获取变更的文件数
-            String diffOutput = getGitOutput(projectPath, "diff", "--stat", "--cached");
+            // 获取变更的文件数（使用 --name-only 精确计数）
+            String diffOutput = getGitOutput(projectPath, "diff", "--name-only", "--cached");
             int changedFiles = (int) diffOutput.lines().filter(l -> !l.isBlank()).count();
 
-            // 中止合并，恢复原状态
-            executeGitCommand(projectPath, "merge", "--abort");
+            // 中止合并，恢复原状态（仅在合并进行中时中止）
+            File mergeHead = new File(projectPath, ".git/MERGE_HEAD");
+            if (mergeHead.exists()) {
+                executeGitCommand(projectPath, "merge", "--abort");
+            } else {
+                // 没有merge状态但有暂存内容，重置
+                executeGitCommand(projectPath, "reset", "--hard", "HEAD");
+            }
             executeGitCommand(projectPath, "checkout", currentBranch);
 
             return new ConflictCheckResult(hasConflicts, conflictFiles, changedFiles, null);
 
         } catch (Exception e) {
             log.error("Failed to check conflicts for workspace: {}", workspaceId, e);
-            // 尝试恢复
-            executeGitCommand(projectPath, "merge", "--abort");
+            // 尝试恢复（仅在合并进行中时中止）
+            File mergeHead = new File(projectPath, ".git/MERGE_HEAD");
+            if (mergeHead.exists()) {
+                executeGitCommand(projectPath, "merge", "--abort");
+            }
             return new ConflictCheckResult(false, List.of(), 0, e.getMessage());
         }
     }
@@ -509,7 +518,12 @@ public class LocalWorkspaceService implements WorkspaceService {
 
         } catch (Exception e) {
             log.error("Failed to sync workspace {} from {}", workspaceId, sourceBranch, e);
-            executeGitCommand(worktreePath, "rebase", "--abort");
+            // 仅在rebase进行中时中止
+            File rebaseDir = new File(worktreePath, ".git/rebase-merge");
+            File rebaseApplyDir = new File(worktreePath, ".git/rebase-apply");
+            if (rebaseDir.exists() || rebaseApplyDir.exists()) {
+                executeGitCommand(worktreePath, "rebase", "--abort");
+            }
             return new SyncResult(false, "rebase", false, List.of(), e.getMessage());
         }
     }
