@@ -77,4 +77,14 @@ public class StoreConfig {
     public JsonFileStore<StoredCliAgentOutputLog> cliAgentOutputLogStore() {
         return new JsonFileStore<>(dataDir, "cli_agent_output_logs", StoredCliAgentOutputLog.class);
     }
+
+    @Bean
+    public JsonFileStore<StoredChatGroup> chatGroupStore() {
+        return new JsonFileStore<>(dataDir, "chat_groups", StoredChatGroup.class);
+    }
+
+    @Bean
+    public JsonFileStore<StoredChatGroupMessage> chatGroupMessageStore() {
+        return new JsonFileStore<>(dataDir, "chat_group_messages", StoredChatGroupMessage.class);
+    }
 }

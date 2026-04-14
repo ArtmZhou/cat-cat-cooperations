@@ -3,6 +3,8 @@ package com.cat.standalone.service;
 import com.cat.cliagent.service.CliOutputPushService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
@@ -17,6 +19,10 @@ import org.springframework.stereotype.Service;
 public class LocalCliOutputPushService implements CliOutputPushService {
 
     private final SimpMessagingTemplate messagingTemplate;
+
+    @Lazy
+    @Autowired
+    private LocalChatGroupService chatGroupService;
 
     // WebSocket目标前缀
     private static final String TOPIC_OUTPUT = "/topic/cli/";
@@ -88,6 +94,11 @@ public class LocalCliOutputPushService implements CliOutputPushService {
         } catch (Exception e) {
             log.error("Failed to push text delta for agent: {}", agentId, e);
         }
+
+        // 转发到群聊（如果agent在群聊上下文中）
+        if (chatGroupService != null) {
+            chatGroupService.handleAgentTextDelta(agentId, text);
+        }
     }
 
     @Override
@@ -99,6 +110,42 @@ public class LocalCliOutputPushService implements CliOutputPushService {
         } catch (Exception e) {
             log.error("Failed to push done for agent: {}", agentId, e);
         }
+
+        // 转发完成信号到群聊（如果agent在群聊上下文中）
+        if (chatGroupService != null) {
+            chatGroupService.handleAgentDone(agentId);
+        }
+    }
+
+    // ===== 群聊输出推送 =====
+
+    private static final String TOPIC_GROUP = "/topic/chat-group/";
+
+    /**
+     * 推送群聊消息
+     */
+    public void pushGroupMessage(String groupId, Object message) {
+        String destination = TOPIC_GROUP + groupId + "/message";
+        try {
+            messagingTemplate.convertAndSend(destination, message);
+            log.debug("Pushed group message to {}", destination);
+        } catch (Exception e) {
+            log.error("Failed to push group message to {}: {}", destination, e.getMessage());
+        }
+    }
+
+    /**
+     * 推送agent在群聊中的流式输出
+     */
+    public void pushGroupAgentOutput(String groupId, String agentId, String agentName, String type, String content) {
+        String destination = TOPIC_GROUP + groupId + "/agent-output";
+        try {
+            messagingTemplate.convertAndSend(destination,
+                new GroupAgentOutput(agentId, agentName, type, content));
+            log.debug("Pushed group agent output to {}: agent={}, type={}", destination, agentId, type);
+        } catch (Exception e) {
+            log.error("Failed to push group agent output to {}: {}", destination, e.getMessage());
+        }
     }
 
     // 输出消息DTO
@@ -109,4 +156,7 @@ public class LocalCliOutputPushService implements CliOutputPushService {
 
     // Token消息DTO
     public record TokenMessage(Long inputTokens, Long outputTokens) {}
+
+    // 群聊Agent输出DTO
+    public record GroupAgentOutput(String agentId, String agentName, String type, String content) {}
 }
