@@ -18,4 +18,9 @@ public class StoredTaskAssignment {
     private LocalDateTime completedAt;
     private String result;
     private String errorMessage;
+
+    // === Git Worktree 并发协同字段 ===
+    private String worktreePath;    // Agent工作时使用的worktree路径
+    private String branchName;      // Agent工作的分支名称
+    private String workspaceId;     // 关联的工作空间ID
 }

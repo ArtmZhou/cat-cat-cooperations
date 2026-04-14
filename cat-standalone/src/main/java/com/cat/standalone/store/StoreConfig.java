@@ -77,4 +77,9 @@ public class StoreConfig {
     public JsonFileStore<StoredCliAgentOutputLog> cliAgentOutputLogStore() {
         return new JsonFileStore<>(dataDir, "cli_agent_output_logs", StoredCliAgentOutputLog.class);
     }
+
+    @Bean
+    public JsonFileStore<StoredWorkspace> workspaceStore() {
+        return new JsonFileStore<>(dataDir, "workspaces", StoredWorkspace.class);
+    }
 }

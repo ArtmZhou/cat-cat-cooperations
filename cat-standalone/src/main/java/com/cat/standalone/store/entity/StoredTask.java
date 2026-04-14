@@ -26,4 +26,10 @@ public class StoredTask {
     private String createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    // === Git Worktree 并发协同字段 ===
+    private String projectPath;     // 关联的项目仓库路径
+    private String branchName;      // 任务对应的分支名称
+    private String worktreePath;    // worktree工作目录路径
+    private String workspaceId;     // 关联的工作空间ID
 }
