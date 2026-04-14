@@ -44,9 +44,13 @@ public class LocalChatGroupService implements ChatGroupService {
     // 追踪每个agent在群聊中的累积输出：agentId → 累积文本
     private final Map<String, StringBuilder> agentGroupOutputBuffers = new ConcurrentHashMap<>();
 
+    private static String generateId(int length) {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, length);
+    }
+
     @Override
     public ChatGroupInfo createGroup(String name, String description, List<String> agentIds) {
-        String id = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        String id = generateId(12);
         LocalDateTime now = LocalDateTime.now();
 
         StoredChatGroup group = new StoredChatGroup();
@@ -110,7 +114,7 @@ public class LocalChatGroupService implements ChatGroupService {
         boolean isBroadcast = mentionedAgentIds == null || mentionedAgentIds.isEmpty();
 
         // 保存用户消息
-        String msgId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        String msgId = generateId(16);
         StoredChatGroupMessage msg = new StoredChatGroupMessage();
         msg.setId(msgId);
         msg.setGroupId(groupId);
@@ -154,7 +158,7 @@ public class LocalChatGroupService implements ChatGroupService {
                 }
 
                 // 构建发送给agent的消息（包含群聊上下文）
-                String agentPrompt = buildAgentPrompt(content, agent.getName(), isBroadcast, group.getName());
+                String agentPrompt = buildAgentPrompt(content);
                 boolean sent = cliSessionService.sendInput(agentId, agentPrompt);
 
                 if (sent) {
@@ -202,7 +206,7 @@ public class LocalChatGroupService implements ChatGroupService {
      * 添加agent响应消息（由WebSocket输出回调触发）
      */
     public void addAgentResponseMessage(String groupId, String agentId, String agentName, String content) {
-        String msgId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        String msgId = generateId(16);
         StoredChatGroupMessage msg = new StoredChatGroupMessage();
         msg.setId(msgId);
         msg.setGroupId(groupId);
@@ -220,13 +224,12 @@ public class LocalChatGroupService implements ChatGroupService {
 
     // ===== 内部方法 =====
 
-    private String buildAgentPrompt(String content, String agentName, boolean isBroadcast, String groupName) {
-        // 简单传递用户消息，agent不需要特殊格式
+    private String buildAgentPrompt(String content) {
         return content;
     }
 
     private void addSystemMessage(String groupId, String content) {
-        String msgId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        String msgId = generateId(16);
         StoredChatGroupMessage msg = new StoredChatGroupMessage();
         msg.setId(msgId);
         msg.setGroupId(groupId);
@@ -242,7 +245,7 @@ public class LocalChatGroupService implements ChatGroupService {
     }
 
     private void addAgentPlaceholderMessage(String groupId, String agentId, String agentName) {
-        String msgId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        String msgId = generateId(16);
         StoredChatGroupMessage msg = new StoredChatGroupMessage();
         msg.setId(msgId);
         msg.setGroupId(groupId);
