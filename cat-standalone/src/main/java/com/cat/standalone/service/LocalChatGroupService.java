@@ -111,6 +111,10 @@ public class LocalChatGroupService implements ChatGroupService {
         StoredChatGroup group = chatGroupStore.findById(groupId)
             .orElseThrow(() -> new IllegalArgumentException("群组不存在: " + groupId));
 
+        if (content == null || content.trim().isEmpty()) {
+            throw new IllegalArgumentException("消息内容不能为空");
+        }
+
         boolean isBroadcast = mentionedAgentIds == null || mentionedAgentIds.isEmpty();
 
         // 保存用户消息

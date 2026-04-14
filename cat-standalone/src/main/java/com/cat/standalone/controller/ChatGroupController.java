@@ -28,11 +28,14 @@ public class ChatGroupController {
     @PostMapping
     public ApiResponse<ChatGroupInfo> createGroup(@RequestBody Map<String, Object> request) {
         String name = (String) request.get("name");
+        if (name == null || name.trim().isEmpty()) {
+            return ApiResponse.error(400, "群组名称不能为空");
+        }
         String description = (String) request.get("description");
         @SuppressWarnings("unchecked")
         List<String> agentIds = (List<String>) request.get("agentIds");
 
-        ChatGroupInfo group = chatGroupService.createGroup(name, description, agentIds);
+        ChatGroupInfo group = chatGroupService.createGroup(name.trim(), description, agentIds);
         return ApiResponse.success(group);
     }
 
@@ -77,10 +80,13 @@ public class ChatGroupController {
             @PathVariable String groupId,
             @RequestBody Map<String, Object> request) {
         String content = (String) request.get("content");
+        if (content == null || content.trim().isEmpty()) {
+            return ApiResponse.error(400, "消息内容不能为空");
+        }
         @SuppressWarnings("unchecked")
         List<String> mentionedAgentIds = (List<String>) request.get("mentionedAgentIds");
 
-        ChatMessageInfo message = chatGroupService.sendUserMessage(groupId, content, mentionedAgentIds);
+        ChatMessageInfo message = chatGroupService.sendUserMessage(groupId, content.trim(), mentionedAgentIds);
         return ApiResponse.success(message);
     }
 

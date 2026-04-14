@@ -497,8 +497,12 @@ async function handleSaveGroup() {
   savingGroup.value = true
   try {
     if (editingGroup.value) {
-      await updateChatGroup(editingGroup.value.id, groupForm.value)
+      const updated = await updateChatGroup(editingGroup.value.id, groupForm.value)
       ElMessage.success('群组已更新')
+      // 刷新selectedGroup如果正在编辑当前选中的群组
+      if (selectedGroup.value?.id === editingGroup.value.id && updated) {
+        selectedGroup.value = updated as ChatGroup
+      }
     } else {
       await createChatGroup(groupForm.value)
       ElMessage.success('群组已创建')
@@ -605,7 +609,13 @@ function formatTime(dateStr: string): string {
 
 function formatMessage(content: string): string {
   if (!content) return '<span class="empty-content">...</span>'
-  return content
+  // 先转义HTML特殊字符，防止XSS
+  const escaped = content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+  return escaped
     .replace(/\n/g, '<br>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
