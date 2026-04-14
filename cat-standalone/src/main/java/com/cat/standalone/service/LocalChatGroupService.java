@@ -228,6 +228,7 @@ public class LocalChatGroupService implements ChatGroupService {
 
     // ===== 内部方法 =====
 
+    // TODO: 后续可扩展，添加群聊上下文信息（群组名称、发送者信息等）到agent的prompt中
     private String buildAgentPrompt(String content) {
         return content;
     }

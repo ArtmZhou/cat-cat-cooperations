@@ -609,12 +609,13 @@ function formatTime(dateStr: string): string {
 
 function formatMessage(content: string): string {
   if (!content) return '<span class="empty-content">...</span>'
-  // 先转义HTML特殊字符，防止XSS
+  // 先转义HTML特殊字符，防止XSS（&必须最先转义，避免double-escape）
   const escaped = content
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
   return escaped
     .replace(/\n/g, '<br>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
