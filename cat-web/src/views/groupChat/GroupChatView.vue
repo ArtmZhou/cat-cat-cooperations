@@ -71,7 +71,7 @@
           <div v-if="messages.length === 0" class="empty-chat">
             <div class="empty-icon">💬</div>
             <p>开始群聊吧！</p>
-            <p class="hint">发送消息给所有Agent，或使用 @ 指定Agent</p>
+            <p class="hint">发送消息给所有Agent，或在输入框中输入 @ 指定Agent</p>
           </div>
 
           <div
@@ -116,12 +116,17 @@
         <div class="chat-input">
           <!-- @提及选择器 -->
           <div v-if="showMentionPopup" class="mention-popup">
-            <div class="mention-header">选择要@的Agent：</div>
+            <div class="mention-header">
+              {{ mentionAtPosition >= 0 ? '输入名称筛选Agent：' : '选择要@的Agent：' }}
+            </div>
             <div
-              v-for="agent in selectedGroup.agents"
+              v-for="(agent, idx) in (mentionAtPosition >= 0 ? filteredMentionAgents : selectedGroup.agents)"
               :key="agent.id"
-              :class="['mention-item', { selected: mentionedAgentIds.includes(agent.id) }]"
-              @click="toggleMention(agent.id)"
+              :class="['mention-item', {
+                selected: mentionedAgentIds.includes(agent.id),
+                highlighted: mentionAtPosition >= 0 && idx === mentionHighlightIndex
+              }]"
+              @click="mentionAtPosition >= 0 ? selectMentionFromInput(agent.id) : toggleMention(agent.id)"
             >
               <span class="mention-avatar">🤖</span>
               <span class="mention-name">{{ agent.name }}</span>
@@ -129,6 +134,9 @@
                 {{ getAgentStatusText(agent.status) }}
               </el-tag>
               <el-icon v-if="mentionedAgentIds.includes(agent.id)" class="mention-check"><Check /></el-icon>
+            </div>
+            <div v-if="mentionAtPosition >= 0 && filteredMentionAgents.length === 0" class="mention-empty">
+              无匹配的Agent
             </div>
           </div>
 
@@ -151,17 +159,18 @@
             <el-button
               :type="showMentionPopup ? 'primary' : 'default'"
               size="small"
-              @click="showMentionPopup = !showMentionPopup"
+              @click="toggleMentionPopupButton"
               class="mention-btn"
             >
               @
             </el-button>
             <el-input
+              ref="inputRef"
               v-model="inputText"
               type="textarea"
               :rows="3"
               :placeholder="inputPlaceholder"
-              @keydown.enter.exact.prevent="sendMessage"
+              @keydown="handleInputKeydown"
             />
           </div>
           <div class="input-actions">
@@ -285,10 +294,14 @@ const inputText = ref('')
 const isSending = ref(false)
 const messagesRef = ref<HTMLElement | null>(null)
 const wsConnected = ref(false)
+const inputRef = ref<any>(null)
 
 // @mention state
 const showMentionPopup = ref(false)
 const mentionedAgentIds = ref<string[]>([])
+const mentionFilter = ref('')  // 输入框中@后的过滤文本
+const mentionAtPosition = ref(-1) // @符号在输入框中的位置
+const mentionHighlightIndex = ref(0) // 键盘导航高亮索引
 
 // Streaming output state: agentId -> accumulated text
 const activeOutputs = ref<Record<string, string>>({})
@@ -316,7 +329,17 @@ const inputPlaceholder = computed(() => {
   if (mentionedAgentIds.value.length > 0) {
     return '输入消息发送给指定Agent... (Enter发送)'
   }
-  return '输入消息广播给所有Agent... (Enter发送，点击@指定Agent)'
+  return '输入消息广播给所有Agent... (Enter发送，输入@指定Agent)'
+})
+
+// 根据@后输入的文本过滤Agent列表
+const filteredMentionAgents = computed(() => {
+  if (!selectedGroup.value?.agents) return []
+  const filter = mentionFilter.value.toLowerCase()
+  if (!filter) return selectedGroup.value.agents
+  return selectedGroup.value.agents.filter(a =>
+    a.name.toLowerCase().includes(filter)
+  )
 })
 
 // ===== Lifecycle =====
@@ -357,6 +380,13 @@ watch(selectedGroup, (newGroup, oldGroup) => {
   activeOutputs.value = {}
   mentionedAgentIds.value = []
   showMentionPopup.value = false
+  closeMentionPopupFromInput()
+})
+
+// 监听输入文本变化，检测@触发
+watch(inputText, () => {
+  // 使用nextTick确保DOM更新后获取正确的cursor位置
+  nextTick(() => handleInputChange())
 })
 
 // ===== Data Loading =====
@@ -481,6 +511,104 @@ function removeMention(agentId: string) {
   if (index >= 0) {
     mentionedAgentIds.value.splice(index, 1)
   }
+}
+
+// 处理输入框中检测@符号
+function handleInputChange() {
+  // 从el-input ref获取底层textarea元素
+  const textareaEl = inputRef.value?.$el?.querySelector('textarea') as HTMLTextAreaElement | null
+  if (!textareaEl) return
+
+  const value = inputText.value
+  const cursorPos = textareaEl.selectionStart || value.length
+
+  // 查找光标前最近的@符号
+  const textBeforeCursor = value.substring(0, cursorPos)
+  const lastAtIndex = textBeforeCursor.lastIndexOf('@')
+
+  if (lastAtIndex >= 0) {
+    // @符号前必须是空格、换行或者在行首
+    const charBefore = lastAtIndex > 0 ? textBeforeCursor[lastAtIndex - 1] : ' '
+    if (charBefore === ' ' || charBefore === '\n' || lastAtIndex === 0) {
+      const query = textBeforeCursor.substring(lastAtIndex + 1)
+      // @后面不能有空格（空格表示@完成）
+      if (!query.includes(' ') && !query.includes('\n')) {
+        mentionFilter.value = query
+        mentionAtPosition.value = lastAtIndex
+        mentionHighlightIndex.value = 0
+        showMentionPopup.value = true
+        return
+      }
+    }
+  }
+
+  // 没有匹配的@，关闭通过输入触发的弹窗
+  if (mentionAtPosition.value >= 0) {
+    closeMentionPopupFromInput()
+  }
+}
+
+// 处理输入框键盘事件（用于@弹窗的键盘导航）
+function handleInputKeydown(event: KeyboardEvent) {
+  if (showMentionPopup.value && mentionAtPosition.value >= 0) {
+    const agents = filteredMentionAgents.value
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      mentionHighlightIndex.value = (mentionHighlightIndex.value + 1) % agents.length
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      mentionHighlightIndex.value = (mentionHighlightIndex.value - 1 + agents.length) % agents.length
+    } else if (event.key === 'Enter' && agents.length > 0) {
+      event.preventDefault()
+      selectMentionFromInput(agents[mentionHighlightIndex.value].id)
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      closeMentionPopupFromInput()
+    }
+    return
+  }
+
+  // 原有的Enter发送逻辑
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault()
+    sendMessage()
+  }
+}
+
+// 从输入框@弹窗中选择Agent
+function selectMentionFromInput(agentId: string) {
+  // 将agent加入mentioned列表
+  if (!mentionedAgentIds.value.includes(agentId)) {
+    mentionedAgentIds.value.push(agentId)
+  }
+
+  // 移除输入框中的@query文本
+  const atPos = mentionAtPosition.value
+  if (atPos >= 0) {
+    const before = inputText.value.substring(0, atPos)
+    const afterCursor = inputText.value.substring(atPos + 1 + mentionFilter.value.length)
+    inputText.value = before + afterCursor
+  }
+
+  closeMentionPopupFromInput()
+}
+
+// 关闭由输入触发的@弹窗
+function closeMentionPopupFromInput() {
+  mentionFilter.value = ''
+  mentionAtPosition.value = -1
+  mentionHighlightIndex.value = 0
+  showMentionPopup.value = false
+}
+
+// @按钮切换弹窗（手动模式）
+function toggleMentionPopupButton() {
+  // 如果当前是输入触发的弹窗，先关闭
+  if (mentionAtPosition.value >= 0) {
+    closeMentionPopupFromInput()
+    return
+  }
+  showMentionPopup.value = !showMentionPopup.value
 }
 
 // ===== Group CRUD =====
@@ -960,6 +1088,18 @@ function getAgentStatusText(status: string): string {
 
 .mention-item.selected {
   background: #E6F7FF;
+}
+
+.mention-item.highlighted {
+  background: #FFF5E6;
+  outline: 1px solid #FF8C42;
+}
+
+.mention-empty {
+  padding: 12px;
+  text-align: center;
+  color: #8C8C8C;
+  font-size: 13px;
 }
 
 .mention-avatar {
