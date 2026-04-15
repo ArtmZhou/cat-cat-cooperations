@@ -109,9 +109,9 @@ public class LocalCliAgentMonitorService implements CliAgentMonitorService {
         // 进程状态
         CliAgentMonitorStatus.ProcessStatus processStatus = new CliAgentMonitorStatus.ProcessStatus();
         CliProcessService.ProcessStatus ps = processService.getProcessStatus(agent.getId());
-        processStatus.setProcessId(ps.processId());
+        processStatus.setProcessMode(ps.processMode());
         processStatus.setUptimeMs(ps.uptimeMs());
-        processStatus.setAlive(ps.processId() != null);
+        processStatus.setAlive("RUNNING".equals(ps.status()) || "EXECUTING".equals(ps.status()));
         processStatus.setLastError(ps.errorMessage());
         status.setProcessStatus(processStatus);
 

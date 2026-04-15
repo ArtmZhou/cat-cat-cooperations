@@ -10,8 +10,10 @@ import com.cat.standalone.store.entity.StoredCliAgent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import jakarta.annotation.PostConstruct;
 import java.io.File;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * CLI进程管理服务实现
@@ -32,6 +34,31 @@ public class LocalCliProcessService implements CliProcessService {
         this.cliAgentStore = cliAgentStore;
         this.templateService = templateService;
         this.cliAgentService = cliAgentService;
+    }
+
+    /**
+     * 服务启动时重置所有运行中的Agent状态为STOPPED
+     * 因为服务重启后，之前的进程上下文已丢失
+     */
+    @PostConstruct
+    public void resetAgentStatusOnStartup() {
+        List<StoredCliAgent> runningAgents = cliAgentStore.find(
+            agent -> "RUNNING".equals(agent.getStatus()) || "EXECUTING".equals(agent.getStatus())
+        );
+
+        if (!runningAgents.isEmpty()) {
+            log.info("Service restarted, resetting {} running/executing agents to STOPPED", runningAgents.size());
+            for (StoredCliAgent agent : runningAgents) {
+                log.info("Resetting agent '{}' (id={}) from {} to STOPPED", agent.getName(), agent.getId(), agent.getStatus());
+                agent.setStatus("STOPPED");
+                agent.setProcessId(null);
+                agent.setSessionId(null);
+                agent.setLastStoppedAt(LocalDateTime.now());
+                agent.setUpdatedAt(LocalDateTime.now());
+                cliAgentStore.save(agent.getId(), agent);
+            }
+            log.info("All agents have been reset to STOPPED state");
+        }
     }
 
     @Override
@@ -151,7 +178,7 @@ public class LocalCliProcessService implements CliProcessService {
 
         // 在--print模式下，返回有意义的状态信息
         Long startTime = agent.getLastStartedAt() != null
-            ? agent.getLastStartedAt().toEpochSecond(java.time.ZoneOffset.UTC) * 1000
+            ? agent.getLastStartedAt().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
             : null;
 
         // 计算运行时长（如果处于RUNNING或EXECUTING状态）
@@ -160,22 +187,18 @@ public class LocalCliProcessService implements CliProcessService {
             uptime = System.currentTimeMillis() - startTime;
         }
 
+        // 确定进程模式
+        String processMode = "per-request-mode".equals(agent.getProcessId()) ? "每请求模式 (--print)" : agent.getProcessId();
+
         return new ProcessStatus(
             agentId,
             agent.getStatus(),
-            "per-request".equals(agent.getProcessId()) ? null : parseLong(agent.getProcessId()),
+            processMode,
             startTime,
             uptime,
-            agent.getSessionId()
+            agent.getSessionId(),
+            null
         );
-    }
-
-    private Long parseLong(String value) {
-        try {
-            return value != null ? Long.parseLong(value) : null;
-        } catch (NumberFormatException e) {
-            return null;
-        }
     }
 
     @Override

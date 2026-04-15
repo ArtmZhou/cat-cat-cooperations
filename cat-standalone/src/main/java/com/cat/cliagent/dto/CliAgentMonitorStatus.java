@@ -39,7 +39,7 @@ public class CliAgentMonitorStatus {
     @Data
     @Schema(description = "进程状态")
     public static class ProcessStatus {
-        private Long processId;
+        private String processMode;
         private Long uptimeMs;
         private boolean alive;
         private String lastError;

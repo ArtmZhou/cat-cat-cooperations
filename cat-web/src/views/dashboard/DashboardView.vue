@@ -47,18 +47,11 @@
             <span class="action-desc">基于模板快速创建Agent实例</span>
           </div>
         </div>
-        <div class="action-card" @click="$router.push('/tasks')">
-          <div class="action-icon">📝</div>
+        <div class="action-card" @click="$router.push('/group-chat')">
+          <div class="action-icon">💬</div>
           <div class="action-info">
-            <span class="action-title">创建任务</span>
-            <span class="action-desc">向CLI Agent发送执行任务</span>
-          </div>
-        </div>
-        <div class="action-card" @click="$router.push('/monitor')">
-          <div class="action-icon">📈</div>
-          <div class="action-info">
-            <span class="action-title">系统监控</span>
-            <span class="action-desc">查看系统运行状态</span>
+            <span class="action-title">群聊协作</span>
+            <span class="action-desc">多Agent群聊协同工作</span>
           </div>
         </div>
       </div>
@@ -186,7 +179,7 @@ function formatTokens(tokens: number): string {
 }
 .action-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 16px;
 }
 .action-card {

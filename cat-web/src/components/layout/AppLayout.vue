@@ -24,14 +24,6 @@
           <el-icon><ChatRound /></el-icon>
           <span>群聊</span>
         </el-menu-item>
-        <el-menu-item index="/tasks">
-          <el-icon><List /></el-icon>
-          <span>任务管理</span>
-        </el-menu-item>
-        <el-menu-item index="/monitor">
-          <el-icon><TrendCharts /></el-icon>
-          <span>系统监控</span>
-        </el-menu-item>
       </el-menu>
     </aside>
 
@@ -72,8 +64,6 @@ import {
   DataAnalysis,
   Monitor,
   ChatRound,
-  List,
-  TrendCharts,
   Fold,
   Expand
 } from '@element-plus/icons-vue'
