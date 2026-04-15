@@ -39,6 +39,7 @@ public class LocalCliProcessService implements CliProcessService {
     /**
      * 服务启动时重置所有运行中的Agent状态为STOPPED
      * 因为服务重启后，之前的进程上下文已丢失
+     * 注意：保留sessionId，以便Agent重新启动后能通过 --resume 恢复对话上下文
      */
     @PostConstruct
     public void resetAgentStatusOnStartup() {
@@ -49,15 +50,16 @@ public class LocalCliProcessService implements CliProcessService {
         if (!runningAgents.isEmpty()) {
             log.info("Service restarted, resetting {} running/executing agents to STOPPED", runningAgents.size());
             for (StoredCliAgent agent : runningAgents) {
-                log.info("Resetting agent '{}' (id={}) from {} to STOPPED", agent.getName(), agent.getId(), agent.getStatus());
+                log.info("Resetting agent '{}' (id={}) from {} to STOPPED (preserving sessionId={})",
+                    agent.getName(), agent.getId(), agent.getStatus(), agent.getSessionId());
                 agent.setStatus("STOPPED");
                 agent.setProcessId(null);
-                agent.setSessionId(null);
+                // 保留 sessionId，不清除，以支持重启后恢复对话上下文
                 agent.setLastStoppedAt(LocalDateTime.now());
                 agent.setUpdatedAt(LocalDateTime.now());
                 cliAgentStore.save(agent.getId(), agent);
             }
-            log.info("All agents have been reset to STOPPED state");
+            log.info("All agents have been reset to STOPPED state (sessionIds preserved for resume)");
         }
     }
 
@@ -133,10 +135,10 @@ public class LocalCliProcessService implements CliProcessService {
             throw new BusinessException(400, "Agent已停止");
         }
 
-        log.info("Stopping CLI agent: {}", agent.getName());
+        log.info("Stopping CLI agent: {} (preserving sessionId={} for future resume)", agent.getName(), agent.getSessionId());
 
-        // 清除会话ID（丢弃对话上下文）
-        agent.setSessionId(null);
+        // 保留 sessionId，以便重新启动后能通过 --resume 恢复对话上下文
+        // 用户可通过"清空日志"操作来同时清除 sessionId
 
         // 更新状态
         agent.setStatus("STOPPED");

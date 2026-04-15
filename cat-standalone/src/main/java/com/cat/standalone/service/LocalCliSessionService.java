@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
@@ -103,17 +104,17 @@ public class LocalCliSessionService implements CliSessionService {
     }
 
     /**
-     * 清理旧输出日志，保持每个Agent最近100条
+     * 清理旧输出日志，保持每个Agent最近N条（由 cat.cli.max-output-logs 配置，默认500）
      */
     private void cleanupOldOutputLogs(String agentId) {
         List<StoredCliAgentOutputLog> logs = outputLogStore.find(
             l -> l.getAgentId().equals(agentId)
         );
 
-        if (logs.size() > MAX_LOG_ENTRIES) {
+        if (logs.size() > maxLogEntries) {
             // 按时间倒序排列，删除最旧的
             logs.sort((a, b) -> b.getTimestamp().compareTo(a.getTimestamp()));
-            List<StoredCliAgentOutputLog> toDelete = logs.subList(MAX_LOG_ENTRIES, logs.size());
+            List<StoredCliAgentOutputLog> toDelete = logs.subList(maxLogEntries, logs.size());
             for (StoredCliAgentOutputLog oldLog : toDelete) {
                 outputLogStore.deleteById(oldLog.getId());
             }
@@ -145,6 +146,22 @@ public class LocalCliSessionService implements CliSessionService {
      */
     public void clearOutputLogs(String agentId) {
         outputLogStore.delete(l -> l.getAgentId().equals(agentId));
+        // 清空日志时同步清除 sessionId，让 Agent 下次对话从零开始
+        clearSessionId(agentId);
+    }
+
+    /**
+     * 清除Agent的会话ID，使其下次对话从零开始
+     */
+    public void clearSessionId(String agentId) {
+        cliAgentStore.findById(agentId).ifPresent(agent -> {
+            if (agent.getSessionId() != null) {
+                log.info("Clearing sessionId for agent {} (was: {})", agentId, agent.getSessionId());
+                agent.setSessionId(null);
+                agent.setUpdatedAt(LocalDateTime.now());
+                cliAgentStore.save(agentId, agent);
+            }
+        });
     }
 
     /**
@@ -189,8 +206,9 @@ public class LocalCliSessionService implements CliSessionService {
     private final Map<String, AtomicLong> bytesSentCount = new ConcurrentHashMap<>();
     private final Map<String, String> lastErrors = new ConcurrentHashMap<>();
 
-    // 输出日志最大保留条数（每个Agent）
-    private static final int MAX_LOG_ENTRIES = 100;
+    // 输出日志最大保留条数（每个Agent），可通过 cat.cli.max-output-logs 配置
+    @Value("${cat.cli.max-output-logs:500}")
+    private int maxLogEntries;
 
     // 输出日志条目
     public record OutputLogEntry(String type, String content, LocalDateTime timestamp) {}
