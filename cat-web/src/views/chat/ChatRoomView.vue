@@ -253,6 +253,7 @@ const messageHistory = ref<Record<string, Message[]>>({})
 
 // localStorage key
 const STORAGE_KEY = 'cli-agent-chat-history'
+const SELECTED_AGENT_KEY = 'cli-agent-selected-agent-id'
 
 // 当前正在接收的消息内容（按agentId）
 const currentOutputs = ref<Record<string, string>>({})
@@ -290,11 +291,46 @@ function saveMessageHistory() {
   }
 }
 
+// 保存选中的Agent ID到localStorage
+function saveSelectedAgentId(agentId: string | null) {
+  try {
+    if (agentId) {
+      localStorage.setItem(SELECTED_AGENT_KEY, agentId)
+    } else {
+      localStorage.removeItem(SELECTED_AGENT_KEY)
+    }
+  } catch (e) {
+    console.error('Failed to save selected agent id:', e)
+  }
+}
+
+// 恢复上次选中的Agent
+function restoreSelectedAgent() {
+  try {
+    const savedAgentId = localStorage.getItem(SELECTED_AGENT_KEY)
+    if (savedAgentId && agents.value.length > 0) {
+      const agent = agents.value.find(a => a.id === savedAgentId)
+      if (agent) {
+        selectedAgent.value = { ...agent }
+        messages.value = messageHistory.value[agent.id] || []
+        console.log('Restored selected agent:', agent.id, 'messages:', messages.value.length)
+        nextTick(() => scrollToBottom())
+      }
+    }
+  } catch (e) {
+    console.error('Failed to restore selected agent:', e)
+  }
+}
+
 onMounted(async () => {
   // 加载消息历史
   loadMessageHistory()
 
   await loadAgents()
+
+  // 恢复上次选中的Agent
+  restoreSelectedAgent()
+
   // 连接WebSocket
   try {
     await cliWebSocket.connect()
@@ -313,6 +349,12 @@ onMounted(async () => {
 onUnmounted(() => {
   // 停止 spinner
   stopSpinner()
+
+  // 保存当前消息历史
+  if (selectedAgent.value && messages.value.length > 0) {
+    messageHistory.value[selectedAgent.value.id] = [...messages.value]
+    saveMessageHistory()
+  }
 
   // 取消订阅
   if (selectedAgent.value) {
@@ -542,6 +584,8 @@ function selectAgent(agent: Agent) {
 
   selectedAgent.value = { ...agent }
   messages.value = messageHistory.value[agent.id] || []
+  // 保存选中的Agent ID到localStorage
+  saveSelectedAgentId(agent.id)
   console.log('Loaded history for agent:', agent.id, 'messages:', messages.value.length)
 
   nextTick(() => {
