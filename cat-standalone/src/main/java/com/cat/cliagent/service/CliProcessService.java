@@ -38,9 +38,10 @@ public interface CliProcessService {
     record ProcessStatus(
         String agentId,
         String status,       // STOPPED, STARTING, RUNNING, EXECUTING, ERROR
-        Long processId,
+        String processMode,  // 进程模式描述，如 "per-request"
         Long startTime,
         Long uptimeMs,
+        String sessionId,
         String errorMessage
     ) {}
 }

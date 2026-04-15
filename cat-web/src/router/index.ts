@@ -47,21 +47,6 @@ const routes = [
         component: () => import('@/views/agent/AgentDetailView.vue')
       },
       {
-        path: 'tasks',
-        name: 'TaskList',
-        component: () => import('@/views/task/TaskListView.vue')
-      },
-      {
-        path: 'tasks/:id',
-        name: 'TaskDetail',
-        component: () => import('@/views/task/TaskDetailView.vue')
-      },
-      {
-        path: 'monitor',
-        name: 'Monitor',
-        component: () => import('@/views/monitor/MonitorView.vue')
-      },
-      {
         path: 'users',
         name: 'UserManagement',
         component: () => import('@/views/user/UserManagementView.vue')

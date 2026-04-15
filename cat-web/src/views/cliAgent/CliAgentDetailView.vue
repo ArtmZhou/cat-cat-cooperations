@@ -44,11 +44,7 @@
           </template>
           <el-descriptions :column="1" border size="small">
             <el-descriptions-item label="模式">
-              <el-tag type="info">每请求模式 (--print)</el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="PID">
-              <el-tag v-if="processStatus?.processId" type="success">{{ processStatus?.processId }}</el-tag>
-              <el-tag v-else type="info">无持久进程</el-tag>
+              <el-tag type="info">{{ processStatus?.processMode || '每请求模式 (--print)' }}</el-tag>
             </el-descriptions-item>
             <el-descriptions-item label="状态">{{ processStatus?.status || '-' }}</el-descriptions-item>
             <el-descriptions-item label="运行时长">{{ formatUptime(processStatus?.uptimeMs) }}</el-descriptions-item>
@@ -60,24 +56,6 @@
           </el-descriptions>
         </el-card>
 
-        <el-card class="session-card">
-          <template #header>
-            <span>会话状态</span>
-          </template>
-          <el-descriptions :column="1" border size="small">
-            <el-descriptions-item label="活跃">
-              <el-tag :type="sessionStatus?.active ? 'success' : 'info'">{{ sessionStatus?.active ? '是' : '否' }}</el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="处理中">
-              <el-tag :type="sessionStatus?.active ? 'primary' : 'info'">{{ sessionStatus?.active ? '是' : '否' }}</el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="接收行数">{{ sessionStatus?.linesReceived || 0 }}</el-descriptions-item>
-            <el-descriptions-item label="发送字节">{{ sessionStatus?.bytesSent || 0 }}</el-descriptions-item>
-            <el-descriptions-item label="最后错误">
-              <span style="color: #f56c6c;">{{ sessionStatus?.lastError || '-' }}</span>
-            </el-descriptions-item>
-          </el-descriptions>
-        </el-card>
 
         <el-card class="token-card">
           <template #header>
@@ -181,7 +159,6 @@ import {
   stopAgent,
   restartAgent,
   getAgentStatus,
-  getSessionStatus,
   getAgentTokenStats,
   getAgentCapabilities,
   addCapability,
@@ -222,7 +199,6 @@ const restarting = ref(false)
 
 // 状态信息
 const processStatus = ref<any>(null)
-const sessionStatus = ref<any>(null)
 const tokenStats = ref<any>(null)
 const capabilities = ref<any[]>([])
 const capabilityTypes = ref<any[]>([])
@@ -289,14 +265,6 @@ async function loadProcessStatus() {
   }
 }
 
-async function loadSessionStatus() {
-  try {
-    sessionStatus.value = await getSessionStatus(agentId)
-  } catch (error) {
-    console.error('加载会话状态失败:', error)
-  }
-}
-
 async function loadTokenStats() {
   try {
     tokenStats.value = await getAgentTokenStats(agentId)
@@ -307,11 +275,9 @@ async function loadTokenStats() {
 
 function startStatusPolling() {
   loadProcessStatus()
-  loadSessionStatus()
   loadTokenStats()
   statusTimer = setInterval(() => {
     loadProcessStatus()
-    loadSessionStatus()
     loadTokenStats()
   }, 5000)
 }
@@ -487,7 +453,7 @@ function formatNumber(num: number | null | undefined): string {
   display: flex;
   gap: 8px;
 }
-.info-card, .process-card, .session-card, .token-card, .communication-card, .capabilities-card {
+.info-card, .process-card, .token-card, .communication-card, .capabilities-card {
   margin-bottom: 20px;
 }
 .card-header {

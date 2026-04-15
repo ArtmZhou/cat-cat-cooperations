@@ -111,6 +111,10 @@ cat-cat-cooperations/
 - Uses `--resume <sessionId>` for conversation continuity
 - Output parsed from `stream-json` format
 
+**Startup Behavior:**
+- On backend restart, all RUNNING/EXECUTING agents are automatically reset to STOPPED
+- This prevents stale status display since process context is lost on restart
+
 **Key Services:**
 - `LocalCliAgentService` - Agent CRUD operations
 - `LocalCliSessionService` - Session & process management
@@ -125,11 +129,11 @@ cat-cat-cooperations/
 - `cli_agents.json` - CLI Agent instances
 - `cli_agent_templates.json` - CLI Agent templates
 - `cli_agent_capabilities.json` - Agent capabilities
-- `tasks.json` - Task entities
-- `task_assignments.json` - Task assignments
-- `task_logs.json` - Task execution logs
 - `token_usage_logs.json` - Token usage records
 - `cli_agent_output_logs.json` - CLI Agent output logs (每Agent最多100条)
+- `tasks.json` - Task entities (backend only, no frontend UI)
+- `task_assignments.json` - Task assignments (backend only)
+- `task_logs.json` - Task execution logs (backend only)
 
 **Format:** Jackson with Java 8 time support
 
@@ -157,9 +161,8 @@ cat-cat-cooperations/
 - `GET /api/v1/cli-agents/{id}/logs` - Get output logs
 - WebSocket `/ws` - Real-time output streaming
 
-**Task Management:**
-- `GET/POST /api/v1/tasks` - Task list/create
-- `POST /api/v1/tasks/{id}/cancel` - Cancel task
+**CLI Agent Monitoring:**
+- `GET /api/v1/cli-agents/monitor/overview` - System overview (used by dashboard)
 
 ## Development Workflow
 
