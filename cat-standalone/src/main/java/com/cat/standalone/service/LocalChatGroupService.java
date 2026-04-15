@@ -395,6 +395,13 @@ public class LocalChatGroupService implements ChatGroupService {
     }
 
     /**
+     * 判断agent当前是否处于群聊上下文中
+     */
+    public boolean isAgentInGroupContext(String agentId) {
+        return agentGroupContext.containsKey(agentId);
+    }
+
+    /**
      * 处理agent的流式文本输出，转发到群聊
      */
     public void handleAgentTextDelta(String agentId, String text) {
@@ -435,6 +442,26 @@ public class LocalChatGroupService implements ChatGroupService {
         StoredCliAgent agent = cliAgentStore.findById(agentId).orElse(null);
         String agentName = agent != null ? agent.getName() : agentId;
         pushGroupAgentOutput(groupId, agentId, agentName, "done", "");
+    }
+
+    /**
+     * 处理agent在群聊中的错误输出，并清理群聊上下文
+     */
+    public void handleAgentError(String agentId, String error) {
+        String groupId = agentGroupContext.remove(agentId);
+        if (groupId == null) return;
+
+        StringBuilder buffer = agentGroupOutputBuffers.remove(agentId);
+        if (buffer != null && !buffer.isEmpty()) {
+            updateLastAgentMessage(groupId, agentId, buffer.toString());
+        }
+
+        StoredCliAgent agent = cliAgentStore.findById(agentId).orElse(null);
+        String agentName = agent != null ? agent.getName() : agentId;
+        String errorMessage = error != null && !error.isBlank() ? error : "未知错误";
+
+        addSystemMessage(groupId, "⚠️ " + agentName + " 执行失败: " + errorMessage);
+        pushGroupAgentOutput(groupId, agentId, agentName, "error", errorMessage);
     }
 
     /**

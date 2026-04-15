@@ -29,9 +29,18 @@ public class LocalCliOutputPushService implements CliOutputPushService {
     private static final String TOPIC_STATUS = "/topic/cli/status/";
     private static final String TOPIC_TOKEN = "/topic/cli/token/";
 
+    private boolean isAgentInGroupContext(String agentId) {
+        return chatGroupService != null && chatGroupService.isAgentInGroupContext(agentId);
+    }
+
     @Override
     public void pushOutput(String agentId, String line) {
         if (line == null || line.isEmpty()) {
+            return;
+        }
+
+        if (isAgentInGroupContext(agentId)) {
+            log.debug("Skip direct output push for agent {} because it is in group chat context", agentId);
             return;
         }
 
@@ -50,6 +59,12 @@ public class LocalCliOutputPushService implements CliOutputPushService {
             return;
         }
 
+        if (isAgentInGroupContext(agentId)) {
+            log.debug("Route error to group chat only for agent {}", agentId);
+            chatGroupService.handleAgentError(agentId, line);
+            return;
+        }
+
         String destination = TOPIC_OUTPUT + agentId + "/error";
         try {
             messagingTemplate.convertAndSend(destination, new OutputMessage("error", line));
@@ -61,6 +76,11 @@ public class LocalCliOutputPushService implements CliOutputPushService {
 
     @Override
     public void pushStatusChange(String agentId, String status) {
+        if (isAgentInGroupContext(agentId) && !"RUNNING".equals(status)) {
+            log.debug("Skip direct status push for agent {} in group chat context: {}", agentId, status);
+            return;
+        }
+
         String destination = TOPIC_STATUS + agentId;
         try {
             messagingTemplate.convertAndSend(destination, new StatusMessage(agentId, status));
@@ -86,6 +106,12 @@ public class LocalCliOutputPushService implements CliOutputPushService {
         if (text == null) {
             return;
         }
+
+        if (isAgentInGroupContext(agentId)) {
+            chatGroupService.handleAgentTextDelta(agentId, text);
+            return;
+        }
+
         // 允许推送空字符串（用于触发消息更新），但null不行
         String destination = TOPIC_OUTPUT + agentId + "/output";
         try {
@@ -94,26 +120,27 @@ public class LocalCliOutputPushService implements CliOutputPushService {
         } catch (Exception e) {
             log.error("Failed to push text delta for agent: {}", agentId, e);
         }
-
-        // 转发到群聊（如果agent在群聊上下文中）
-        if (chatGroupService != null) {
-            chatGroupService.handleAgentTextDelta(agentId, text);
-        }
     }
 
     @Override
     public void pushDone(String agentId) {
+        if (isAgentInGroupContext(agentId)) {
+            chatGroupService.handleAgentDone(agentId);
+            // 群聊上下文已在handleAgentDone中清理，这里只向agent状态topic同步最终空闲状态
+            try {
+                messagingTemplate.convertAndSend(TOPIC_STATUS + agentId, new StatusMessage(agentId, "RUNNING"));
+            } catch (Exception e) {
+                log.error("Failed to push final running status for grouped agent: {}", agentId, e);
+            }
+            return;
+        }
+
         String destination = TOPIC_OUTPUT + agentId + "/output";
         try {
             messagingTemplate.convertAndSend(destination, new OutputMessage("done", ""));
             log.debug("Pushed done signal for agent: {}", agentId);
         } catch (Exception e) {
             log.error("Failed to push done for agent: {}", agentId, e);
-        }
-
-        // 转发完成信号到群聊（如果agent在群聊上下文中）
-        if (chatGroupService != null) {
-            chatGroupService.handleAgentDone(agentId);
         }
     }
 

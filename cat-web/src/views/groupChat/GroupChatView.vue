@@ -467,6 +467,14 @@ function subscribeToGroup(groupId: string) {
       if (selectedGroup.value) {
         loadGroupMessages(selectedGroup.value.id)
       }
+    } else if (type === 'error') {
+      delete activeOutputs.value[agentId]
+      if (Object.keys(activeOutputs.value).length === 0) {
+        stopSpinner()
+      }
+      if (selectedGroup.value) {
+        loadGroupMessages(selectedGroup.value.id)
+      }
     }
   })
 }

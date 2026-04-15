@@ -230,9 +230,44 @@ private String buildAgentPrompt(String groupId, String content, String currentAg
 
 ---
 
-## 7. 测试验证
+## 7. 聊天室 / 群聊推送隔离修复
 
-### 7.1 群聊@提及输入
+### 7.1 问题描述
+
+在修复聊天室多 Agent 并行对话后，又暴露出一个严重隔离问题：
+
+1. **群聊回复串入聊天室**：群聊中 agent 执行时，后端仍然把同一份 `text_delta / output / error / done` 推送到 `/topic/cli/{agentId}/...`，导致聊天室已订阅的同名 agent 收到群聊输出。
+2. **隔离修复不能破坏聊天室并行对话**：聊天室为了支持多 Agent 并行对话，需要保留多个 agent 的订阅，因此必须在后端推送层完成上下文隔离，而不是简单回退前端订阅策略。
+
+### 7.2 修改方案
+
+1. **后端按上下文路由 WebSocket**：当 agent 处于群聊上下文时，`LocalCliOutputPushService` 不再向聊天室 topic 推送 `output / text_delta / error / done / EXECUTING` 事件。
+2. **群聊专用收尾处理**：群聊上下文中的 `error` 与 `done` 事件交给 `LocalChatGroupService` 清理上下文和缓存，避免上下文泄漏到下一次对话。
+3. **保留最终 RUNNING 状态同步**：群聊任务完成后，仅向 agent 状态 topic 同步一次 `RUNNING`，保证列表状态回正，但不把群聊执行内容泄漏到聊天室。
+4. **群聊前端补 error 分支**：群聊页面收到群聊专属 `error` 输出时，关闭 streaming spinner 并刷新消息列表。
+
+### 7.3 修改文件
+
+| 文件 | 修改内容 |
+|------|----------|
+| `cat-standalone/src/main/java/com/cat/standalone/service/LocalCliOutputPushService.java` | 按群聊上下文隔离聊天室 / 群聊推送 |
+| `cat-standalone/src/main/java/com/cat/standalone/service/LocalChatGroupService.java` | 暴露群聊上下文判断并补充错误收尾 |
+| `cat-web/src/views/groupChat/GroupChatView.vue` | 处理群聊 agent-output 的 `error` 收尾 |
+| `cat-standalone/src/test/java/com/cat/standalone/service/LocalCliOutputPushServiceTest.java` | 新增推送隔离单元测试 |
+
+### 7.4 关键修改点
+
+1. **`isAgentInGroupContext(agentId)`**：新增显式上下文判断，供推送层区分聊天室请求与群聊请求。
+2. **`pushTextDelta / pushOutput / pushError / pushDone`**：当 agent 正在群聊上下文时，不再写入 `/topic/cli/{agentId}/...`，改为仅走群聊分支。
+3. **`pushStatusChange`**：群聊上下文下抑制 `EXECUTING`，仅保留最终 `RUNNING` 状态同步，避免聊天室出现群聊执行状态污染。
+4. **`handleAgentError`**：新增群聊错误收尾，清理 `agentGroupContext / agentGroupOutputBuffers`，并追加系统提示消息。
+5. **单元测试覆盖**：验证群聊上下文下 direct chat topic 不再收到 `output / text_delta / error / done / EXECUTING`，同时 direct chat 正常场景仍然会收到 personal topic 推送。
+
+---
+
+## 8. 测试验证
+
+### 8.1 群聊@提及输入
 
 1. 进入群聊页面，选择一个群组
 2. 在输入框中输入`@`，验证弹出Agent选择弹窗
@@ -241,7 +276,7 @@ private String buildAgentPrompt(String groupId, String content, String currentAg
 5. 验证选中的Agent出现在mentioned标签中
 6. 验证原有@按钮仍可正常使用
 
-### 7.2 群聊Agent上下文感知
+### 8.2 群聊Agent上下文感知
 
 1. 创建包含2+个Agent的群聊
 2. 发送一条广播消息
@@ -249,7 +284,7 @@ private String buildAgentPrompt(String groupId, String content, String currentAg
 4. 再发送一条消息
 5. 验证Agent2的回复中体现了对Agent1回复的感知
 
-### 7.3 聊天室会话记录恢复
+### 8.3 聊天室会话记录恢复
 
 1. 进入聊天室，选择一个Agent
 2. 发送几条消息，等待回复
@@ -257,7 +292,7 @@ private String buildAgentPrompt(String groupId, String content, String currentAg
 4. 再切回聊天室页面
 5. 验证之前选中的Agent仍然选中，消息历史正确显示
 
-### 7.4 聊天室状态隔离
+### 8.4 聊天室状态隔离
 
 1. 进入聊天室，选择Agent1，发送消息
 2. 等待Agent1开始处理（显示"发送请求..."或spinner）
@@ -267,14 +302,14 @@ private String buildAgentPrompt(String groupId, String content, String currentAg
 6. 切换回Agent1，验证Agent1的处理状态正确显示
 7. 等待Agent1完成，验证状态正确清除
 
-### 7.5 聊天室错误处理
+### 8.5 聊天室错误处理
 
 1. 向未运行的Agent发送消息（如果界面允许）
 2. 验证错误信息正确显示在消息列表中
 3. 验证错误信息被保存到消息历史中
 4. 切换到其他页面再切回来，验证错误信息仍然显示
 
-### 7.6 聊天室多Agent并行对话
+### 8.6 聊天室多Agent并行对话
 
 1. 进入聊天室，选择Agent1，发送一条消息
 2. 在Agent1处理期间，立即切换到Agent2
@@ -284,7 +319,7 @@ private String buildAgentPrompt(String groupId, String content, String currentAg
 6. 切换到Agent2，验证Agent2的对话内容也正确显示
 7. 验证两个Agent的消息历史互不干扰
 
-### 7.7 聊天室执行状态提示
+### 8.7 聊天室执行状态提示
 
 1. 选择一个运行中的Agent
 2. 发送一条消息
@@ -293,7 +328,7 @@ private String buildAgentPrompt(String groupId, String content, String currentAg
 5. 验证开始接收输出后状态栏变为"接收响应中..."
 6. 验证响应完成后状态栏消失
 
-### 7.8 聊天室耗时显示
+### 8.8 聊天室耗时显示
 
 1. 选择一个运行中的Agent
 2. 发送一条消息
@@ -302,3 +337,11 @@ private String buildAgentPrompt(String groupId, String content, String currentAg
 5. 超过60秒时验证显示格式变为"X分Y秒"
 6. 验证响应完成后计时器消失
 7. 在Agent处理期间切换到其他Agent再切回来，验证计时器仍在正确计时
+
+### 8.9 聊天室 / 群聊推送隔离
+
+1. 打开群聊页面，向某个包含 AgentA 的群组发送消息。
+2. 同时打开聊天室页面并订阅 AgentA 的单聊。
+3. 验证群聊回复只出现在群聊页面，不再进入聊天室的 AgentA 对话历史。
+4. 在聊天室中分别与 AgentA、AgentB 对话并切换标签，验证两个 Agent 的回复仍能分别正常显示。
+5. 运行单元测试 `mvn test -pl cat-standalone -Dtest=LocalCliOutputPushServiceTest`，验证群聊上下文不会再向聊天室 topic 推送 `output / text_delta / error / done / EXECUTING`。
