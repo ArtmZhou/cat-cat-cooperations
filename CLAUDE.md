@@ -86,7 +86,14 @@ cat-cat-cooperations/
 └── cat-web/           # Vue 3 frontend SPA
     └── src/
         ├── api/       # API client modules
+        ├── assets/styles/  # SCSS design system (dark tech theme)
+        │   ├── _variables.scss  # Design tokens (colors, spacing, etc.)
+        │   └── main.scss        # Global styles + Element Plus overrides
+        ├── components/     # Shared components
+        │   ├── CatIcons.vue     # 12 SVG icon components
+        │   └── layout/          # AppLayout (dark sidebar + glass header)
         ├── views/     # Page components
+        ├── stores/    # Pinia state management
         └── utils/     # Utilities (WebSocket, etc.)
 ```
 
@@ -100,6 +107,8 @@ cat-cat-cooperations/
 ### Frontend Structure
 
 - Vue 3 Composition API with `<script setup>`
+- **Dark tech theme**: Violet→Cyan gradient, glassmorphism, custom SVG icons
+- Design tokens in `_variables.scss`, Element Plus dark overrides in `main.scss`
 - API modules in `src/api/`
 - Pinia stores in `src/stores/`
 - WebSocket via `@stomp/stompjs`

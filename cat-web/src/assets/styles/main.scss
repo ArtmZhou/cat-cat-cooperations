@@ -1,5 +1,8 @@
-@import './variables.scss';
+@use './variables' as *;
 
+// ============================================
+// Global Reset
+// ============================================
 * {
   margin: 0;
   padding: 0;
@@ -9,8 +12,254 @@
 html, body, #app {
   width: 100%;
   height: 100%;
-  font-family: 'Inter', 'PingFang SC', sans-serif;
+  font-family: 'Inter', 'PingFang SC', -apple-system, sans-serif;
   font-size: 14px;
-  color: $cat-text;
-  background-color: $cat-bg;
+  color: $text-primary;
+  background-color: $bg-base;
+}
+
+// ============================================
+// Element Plus Dark Theme Overrides
+// ============================================
+:root {
+  --el-bg-color: #{$bg-surface};
+  --el-bg-color-overlay: #{$bg-elevated};
+  --el-bg-color-page: #{$bg-base};
+  --el-text-color-primary: #{$text-primary};
+  --el-text-color-regular: #{$text-secondary};
+  --el-text-color-secondary: #{$text-muted};
+  --el-text-color-placeholder: #{$text-muted};
+  --el-border-color: #{$border-subtle};
+  --el-border-color-light: rgba(124, 58, 237, 0.08);
+  --el-border-color-lighter: rgba(124, 58, 237, 0.05);
+  --el-border-color-dark: #{$border-active};
+  --el-fill-color: #{$bg-hover};
+  --el-fill-color-light: #{$bg-surface};
+  --el-fill-color-lighter: #{$bg-elevated};
+  --el-fill-color-blank: #{$bg-surface};
+  --el-color-primary: #{$color-violet};
+  --el-color-primary-light-3: rgba(124, 58, 237, 0.6);
+  --el-color-primary-light-5: rgba(124, 58, 237, 0.4);
+  --el-color-primary-light-7: rgba(124, 58, 237, 0.25);
+  --el-color-primary-light-8: rgba(124, 58, 237, 0.15);
+  --el-color-primary-light-9: rgba(124, 58, 237, 0.08);
+  --el-color-primary-dark-2: #6D28D9;
+  --el-color-success: #{$success};
+  --el-color-warning: #{$warning};
+  --el-color-danger: #{$danger};
+  --el-color-info: #{$text-muted};
+  --el-mask-color: rgba(11, 13, 20, 0.8);
+  --el-dialog-bg-color: #{$bg-elevated};
+  --el-menu-bg-color: transparent;
+  --el-menu-text-color: #{$text-secondary};
+  --el-menu-active-color: #{$text-primary};
+  --el-menu-hover-bg-color: #{$bg-hover};
+  --el-input-bg-color: #{$bg-surface};
+  --el-input-border-color: #{$border-subtle};
+  --el-input-text-color: #{$text-primary};
+  --el-disabled-bg-color: #{$bg-surface};
+  --el-disabled-text-color: #{$text-muted};
+  --el-disabled-border-color: #{$border-subtle};
+  --el-button-bg-color: #{$bg-surface};
+  --el-button-text-color: #{$text-primary};
+  --el-button-border-color: #{$border-subtle};
+  --el-button-hover-bg-color: #{$bg-hover};
+  --el-button-hover-text-color: #{$text-primary};
+  --el-button-hover-border-color: #{$border-active};
+  --el-dropdown-menu-box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --el-popper-border-color: #{$border-subtle};
+  --el-loading-spinner-size: 42px;
+  --el-tag-bg-color: #{$bg-hover};
+  --el-tag-border-color: #{$border-subtle};
+  --el-tag-text-color: #{$text-secondary};
+  --el-empty-description-margin-top: 20px;
+}
+
+// Element Plus component-level fixes
+.el-dialog {
+  border: 1px solid $border-subtle;
+  border-radius: $radius-lg !important;
+}
+
+.el-dialog__header {
+  border-bottom: 1px solid $border-subtle;
+  padding-bottom: 16px;
+}
+
+.el-dialog__title {
+  color: $text-primary;
+}
+
+.el-divider {
+  border-color: $border-subtle;
+}
+
+.el-divider__text {
+  background-color: $bg-elevated;
+  color: $text-secondary;
+}
+
+.el-select-dropdown {
+  background: $bg-elevated !important;
+  border: 1px solid $border-subtle !important;
+}
+
+.el-select-dropdown__item {
+  color: $text-secondary;
+  &:hover, &.hover {
+    background: $bg-hover;
+  }
+  &.selected {
+    color: $color-violet;
+  }
+}
+
+.el-message-box {
+  background: $bg-elevated;
+  border: 1px solid $border-subtle;
+}
+
+.el-loading-mask {
+  background-color: rgba(11, 13, 20, 0.6);
+}
+
+.el-empty__description p {
+  color: $text-muted;
+}
+
+.el-tag--info {
+  --el-tag-bg-color: #{$bg-hover};
+  --el-tag-border-color: #{$border-subtle};
+  --el-tag-text-color: #{$text-secondary};
+}
+
+.el-tag--success {
+  --el-tag-bg-color: rgba(16, 185, 129, 0.1);
+  --el-tag-border-color: rgba(16, 185, 129, 0.2);
+  --el-tag-text-color: #{$success};
+}
+
+.el-tag--primary {
+  --el-tag-bg-color: #{$color-violet-dim};
+  --el-tag-border-color: rgba(124, 58, 237, 0.2);
+  --el-tag-text-color: #{$color-violet};
+}
+
+.el-tag--danger {
+  --el-tag-bg-color: rgba(239, 68, 68, 0.1);
+  --el-tag-border-color: rgba(239, 68, 68, 0.2);
+  --el-tag-text-color: #{$danger};
+}
+
+.el-tag--warning {
+  --el-tag-bg-color: rgba(245, 158, 11, 0.1);
+  --el-tag-border-color: rgba(245, 158, 11, 0.2);
+  --el-tag-text-color: #{$warning};
+}
+
+// Primary button gradient
+.el-button--primary {
+  background: linear-gradient(135deg, $color-violet, $color-cyan) !important;
+  border: none !important;
+  color: #fff !important;
+  &:hover, &:focus {
+    opacity: 0.9;
+    box-shadow: $glow-violet;
+  }
+  &.is-disabled {
+    opacity: 0.4;
+    box-shadow: none;
+  }
+}
+
+.el-rate__icon {
+  color: $text-muted;
+  &.is-active {
+    color: $color-violet;
+  }
+}
+
+// Input focus glow
+.el-input.is-focus .el-input__wrapper,
+.el-input__wrapper:focus-within,
+.el-textarea.is-focus .el-textarea__inner,
+.el-textarea__inner:focus {
+  box-shadow: 0 0 0 1px $color-violet !important;
+}
+
+.el-input__wrapper {
+  background-color: $bg-surface;
+  box-shadow: 0 0 0 1px $border-subtle;
+}
+
+.el-textarea__inner {
+  background-color: $bg-surface;
+  color: $text-primary;
+  border-color: $border-subtle;
+}
+
+// ============================================
+// Animations
+// ============================================
+@keyframes breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(124, 58, 237, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(124, 58, 237, 0);
+  }
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+// ============================================
+// Utility Classes
+// ============================================
+.gradient-text {
+  background: linear-gradient(135deg, $color-violet, $color-cyan);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-border {
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  position: relative;
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(124,58,237,0.3), rgba(6,182,212,0.3));
+    z-index: -1;
+  }
+}
+
+// Scrollbar
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(124, 58, 237, 0.2);
+  border-radius: 3px;
+  &:hover {
+    background: rgba(124, 58, 237, 0.35);
+  }
 }
