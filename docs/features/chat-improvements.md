@@ -145,9 +145,45 @@ private String buildAgentPrompt(String groupId, String content, String currentAg
 
 ---
 
-## 5. 测试验证
+## 5. 聊天室状态隔离修复
 
-### 5.1 群聊@提及输入
+### 5.1 问题描述
+
+聊天室存在两个关键问题：
+1. **对话内容未正确显示**: 发送消息后，助手的响应在某些情况下未能正确更新到消息列表中。错误处理时仅修改了 `messages.value` 中的对象属性，但未同步更新 `messageHistory`，导致状态不一致。
+2. **跨Agent状态污染**: 与agent1对话时，agent2的对话页面也显示「发送请求...」状态。原因是 `isLoading` 和 `cliStatus` 是全局单一状态，不区分Agent。
+
+### 5.2 修改方案
+
+将 `isLoading` 和 `cliStatus` 从全局单一状态改为按Agent ID存储的状态Map，通过 `computed` 属性自动读取当前选中Agent的状态。同时修复错误处理逻辑，使用 `updateAssistantMessage` 统一更新消息历史。
+
+### 5.3 修改文件
+
+| 文件 | 修改内容 |
+|------|----------|
+| `cat-web/src/views/chat/ChatRoomView.vue` | 状态隔离重构、错误处理修复 |
+
+### 5.4 状态变量变更
+
+| 旧变量 | 新变量 | 说明 |
+|--------|--------|------|
+| `isLoading: ref(false)` | `loadingStates: ref<Record<string, boolean>>({})` | 按agentId存储加载状态 |
+| `cliStatus: ref(null)` | `cliStatusStates: ref<Record<string, ...>>({})` | 按agentId存储CLI状态 |
+| - | `isLoading: computed()` | 自动读取当前选中Agent的加载状态 |
+| - | `cliStatus: computed()` | 自动读取当前选中Agent的CLI状态 |
+
+### 5.5 关键修改点
+
+1. **WebSocket事件处理**: `done`、`error`、`text_delta`、`output` 事件中的状态更新改为按agentId写入 `loadingStates` 和 `cliStatusStates`，不再依赖 `isSelected` 判断
+2. **sendMessage错误处理**: 使用 `updateAssistantMessage()` 替代直接修改 `messages.value` 中的对象属性，确保错误信息同时写入 `messageHistory`
+3. **selectAgent**: 切换Agent时根据目标Agent的 `loadingStates` 决定是否显示spinner
+4. **模板无需修改**: `isLoading` 和 `cliStatus` 在模板中的引用不变，因为computed属性保持了相同的名称
+
+---
+
+## 6. 测试验证
+
+### 6.1 群聊@提及输入
 
 1. 进入群聊页面，选择一个群组
 2. 在输入框中输入`@`，验证弹出Agent选择弹窗
@@ -156,7 +192,7 @@ private String buildAgentPrompt(String groupId, String content, String currentAg
 5. 验证选中的Agent出现在mentioned标签中
 6. 验证原有@按钮仍可正常使用
 
-### 5.2 群聊Agent上下文感知
+### 6.2 群聊Agent上下文感知
 
 1. 创建包含2+个Agent的群聊
 2. 发送一条广播消息
@@ -164,10 +200,27 @@ private String buildAgentPrompt(String groupId, String content, String currentAg
 4. 再发送一条消息
 5. 验证Agent2的回复中体现了对Agent1回复的感知
 
-### 5.3 聊天室会话记录恢复
+### 6.3 聊天室会话记录恢复
 
 1. 进入聊天室，选择一个Agent
 2. 发送几条消息，等待回复
 3. 切换到其他页面（如仪表盘）
 4. 再切回聊天室页面
 5. 验证之前选中的Agent仍然选中，消息历史正确显示
+
+### 6.4 聊天室状态隔离
+
+1. 进入聊天室，选择Agent1，发送消息
+2. 等待Agent1开始处理（显示"发送请求..."或spinner）
+3. 切换到Agent2
+4. 验证Agent2的页面没有显示"发送请求..."或spinner
+5. Agent2可以正常输入和发送消息
+6. 切换回Agent1，验证Agent1的处理状态正确显示
+7. 等待Agent1完成，验证状态正确清除
+
+### 6.5 聊天室错误处理
+
+1. 向未运行的Agent发送消息（如果界面允许）
+2. 验证错误信息正确显示在消息列表中
+3. 验证错误信息被保存到消息历史中
+4. 切换到其他页面再切回来，验证错误信息仍然显示

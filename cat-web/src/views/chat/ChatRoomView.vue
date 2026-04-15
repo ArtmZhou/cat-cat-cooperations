@@ -177,12 +177,26 @@ const agents = ref<Agent[]>([])
 const selectedAgent = ref<Agent | null>(null)
 const messages = ref<Message[]>([])
 const inputText = ref('')
-const isLoading = ref(false)
 const messagesRef = ref<HTMLElement | null>(null)
 const wsConnected = ref(false)
 
-// CLI 状态指示器
-const cliStatus = ref<{ action: string; detail?: string } | null>(null)
+// 按Agent的加载状态（agentId -> boolean）
+const loadingStates = ref<Record<string, boolean>>({})
+// 按Agent的CLI状态指示器（agentId -> status）
+const cliStatusStates = ref<Record<string, { action: string; detail?: string } | null>>({})
+
+// 当前选中Agent的加载状态
+const isLoading = computed(() => {
+  if (!selectedAgent.value) return false
+  return loadingStates.value[selectedAgent.value.id] || false
+})
+
+// 当前选中Agent的CLI状态
+const cliStatus = computed(() => {
+  if (!selectedAgent.value) return null
+  return cliStatusStates.value[selectedAgent.value.id] || null
+})
+
 const spinnerFrame = ref('⠋')
 const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 let spinnerInterval: ReturnType<typeof setInterval> | null = null
@@ -419,16 +433,16 @@ function subscribeToAgent(agentId: string) {
       const parsed = parseCliOutput(data.content)
 
       if (parsed.isStatus) {
-        // 只有选中的agent才更新状态指示器
+        // 更新该agent的状态指示器（按agent存储）
+        cliStatusStates.value[agentId] = { action: parsed.action || '', detail: parsed.detail }
         if (isSelected) {
-          cliStatus.value = { action: parsed.action || '', detail: parsed.detail }
           startSpinner()
         }
       } else if (parsed.content) {
-        // 停止状态指示器（如果是选中agent）
+        // 停止该agent的状态指示器
+        cliStatusStates.value[agentId] = null
         if (isSelected) {
           stopSpinner()
-          cliStatus.value = null
         }
 
         // 追加到当前输出（按agent存储）- 无论是否选中都保存
@@ -439,19 +453,14 @@ function subscribeToAgent(agentId: string) {
           currentOutputs.value[agentId] = current + '\n' + parsed.content
         }
 
-        // 只有选中的agent才更新UI
-        if (isSelected) {
-          updateAssistantMessage(currentOutputs.value[agentId], agentId)
-        } else {
-          // 未选中的agent也更新历史（但不更新UI）
-          updateAssistantMessage(currentOutputs.value[agentId], agentId)
-        }
+        // 更新消息历史（传入agentId，内部判断是否更新UI）
+        updateAssistantMessage(currentOutputs.value[agentId], agentId)
       }
     } else if (data.type === 'text_delta') {
       // 流式文本片段（--print模式）或完整响应
+      cliStatusStates.value[agentId] = null
       if (isSelected) {
         stopSpinner()
-        cliStatus.value = null
       }
 
       // 追加文本（如果内容不为空）- 无论是否选中都保存
@@ -462,16 +471,16 @@ function subscribeToAgent(agentId: string) {
         updateAssistantMessage(currentOutputs.value[agentId], agentId)
       }
     } else if (data.type === 'done') {
-      // 响应完成信号
+      // 响应完成信号 - 无论是否选中都清理该agent的状态
+      cliStatusStates.value[agentId] = null
+      loadingStates.value[agentId] = false
       if (isSelected) {
         stopSpinner()
-        cliStatus.value = null
-        isLoading.value = false
+      }
 
-        // 如果当前输出为空，显示提示
-        if (!currentOutputs.value[agentId]) {
-          updateAssistantMessage('⚠️ 未收到响应内容', agentId)
-        }
+      // 如果当前输出为空，显示提示
+      if (!currentOutputs.value[agentId]) {
+        updateAssistantMessage('⚠️ 未收到响应内容', agentId)
       }
       // 完成后清空当前输出缓存
       delete currentOutputs.value[agentId]
@@ -481,9 +490,12 @@ function subscribeToAgent(agentId: string) {
   // 订阅错误输出
   cliWebSocket.subscribeError(agentId, (data) => {
     console.log('Received error:', data)
-    stopSpinner()
-    cliStatus.value = null
-    isLoading.value = false
+    // 清理该agent的状态（无论是否选中）
+    cliStatusStates.value[agentId] = null
+    loadingStates.value[agentId] = false
+    if (selectedAgent.value?.id === agentId) {
+      stopSpinner()
+    }
     if (data.type === 'error' && data.content) {
       addMessage('assistant', '⚠️ ' + data.content, agentId)
     }
@@ -505,16 +517,16 @@ function subscribeToAgent(agentId: string) {
 
 // 更新或添加助手消息
 function updateAssistantMessage(content: string, targetAgentId?: string) {
-  // 收到实际内容，停止状态指示器（如果当前选中了该agent）
   const agentId = targetAgentId || selectedAgent.value?.id
   if (!agentId) return
 
   const isSelected = selectedAgent.value?.id === agentId
 
+  // 收到实际内容，更新该agent的状态
+  cliStatusStates.value[agentId] = null
+  loadingStates.value[agentId] = false
   if (isSelected) {
     stopSpinner()
-    cliStatus.value = null
-    isLoading.value = false
   }
 
   // 获取该agent的消息列表
@@ -573,20 +585,25 @@ function selectAgent(agent: Agent) {
   // 保存当前agent的消息历史
   if (selectedAgent.value && messages.value.length > 0) {
     messageHistory.value[selectedAgent.value.id] = [...messages.value]
-    saveMessageHistory() // 关键修复：添加保存
+    saveMessageHistory()
     console.log('Saved history for agent:', selectedAgent.value.id, 'messages:', messages.value.length)
   }
 
-  // 切换前清空当前agent的输出缓存（只清空当前选中的，不是全局）
-  if (selectedAgent.value) {
-    delete currentOutputs.value[selectedAgent.value.id]
-  }
+  // 注意：不删除旧agent的currentOutputs，因为它可能仍在处理中
+  // currentOutputs会在done事件中清理，或在下次发送消息时重置
 
   selectedAgent.value = { ...agent }
   messages.value = messageHistory.value[agent.id] || []
   // 保存选中的Agent ID到localStorage
   saveSelectedAgentId(agent.id)
   console.log('Loaded history for agent:', agent.id, 'messages:', messages.value.length)
+
+  // 如果切换到的agent正在加载中，启动spinner
+  if (loadingStates.value[agent.id]) {
+    startSpinner()
+  } else {
+    stopSpinner()
+  }
 
   nextTick(() => {
     scrollToBottom()
@@ -660,11 +677,11 @@ async function sendMessage() {
   // 预添加一条空的助手消息（用于后续更新，确保添加到正确的agent历史）
   addMessage('assistant', '', agentId)
 
-  // 重置状态（按agent）
+  // 重置状态（按agent存储，避免跨agent污染）
   currentOutputs.value[agentId] = ''
-  cliStatus.value = { action: '发送请求...' }
+  cliStatusStates.value[agentId] = { action: '发送请求...' }
+  loadingStates.value[agentId] = true
   startSpinner()
-  isLoading.value = true
 
   try {
     // 发送输入到CLI
@@ -672,24 +689,18 @@ async function sendMessage() {
 
     if (!success) {
       stopSpinner()
-      cliStatus.value = null
-      // 更新最后一条空消息为错误信息
-      const lastMsg = messages.value[messages.value.length - 1]
-      if (lastMsg && lastMsg.role === 'assistant') {
-        lastMsg.content = '❌ 发送失败，请检查Agent状态'
-      }
-      isLoading.value = false
+      cliStatusStates.value[agentId] = null
+      loadingStates.value[agentId] = false
+      // 更新最后一条空消息为错误信息（同时更新历史）
+      updateAssistantMessage('❌ 发送失败，请检查Agent状态', agentId)
     }
     // 成功发送后，状态将通过 WebSocket 更新
   } catch (error: any) {
     stopSpinner()
-    cliStatus.value = null
-    // 更新最后一条空消息为错误信息
-    const lastMsg = messages.value[messages.value.length - 1]
-    if (lastMsg && lastMsg.role === 'assistant') {
-      lastMsg.content = `❌ 发送失败: ${error.message || '未知错误'}`
-    }
-    isLoading.value = false
+    cliStatusStates.value[agentId] = null
+    loadingStates.value[agentId] = false
+    // 更新最后一条空消息为错误信息（同时更新历史）
+    updateAssistantMessage(`❌ 发送失败: ${error.message || '未知错误'}`, agentId)
   }
 }
 
