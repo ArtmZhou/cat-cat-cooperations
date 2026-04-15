@@ -103,6 +103,9 @@
               <span class="status-action">{{ cliStatus.action || '处理中' }}</span>
               <span v-if="cliStatus.detail" class="status-detail">{{ cliStatus.detail }}</span>
             </div>
+            <div v-if="elapsedTime" class="status-elapsed">
+              ⏱️ {{ elapsedTime }}
+            </div>
           </div>
         </div>
 
@@ -200,6 +203,62 @@ const cliStatus = computed(() => {
 const spinnerFrame = ref('⠋')
 const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 let spinnerInterval: ReturnType<typeof setInterval> | null = null
+
+// 按Agent的请求开始时间（agentId -> timestamp）
+const requestStartTimes = ref<Record<string, number>>({})
+// 按Agent的已用时间显示（agentId -> formatted string）
+const elapsedTimes = ref<Record<string, string>>({})
+let elapsedTimerInterval: ReturnType<typeof setInterval> | null = null
+
+// 当前选中Agent的已用时间
+const elapsedTime = computed(() => {
+  if (!selectedAgent.value) return ''
+  return elapsedTimes.value[selectedAgent.value.id] || ''
+})
+
+// 格式化毫秒为可读时间
+function formatElapsed(ms: number): string {
+  const seconds = Math.floor(ms / 1000)
+  if (seconds < 60) return `${seconds}秒`
+  const minutes = Math.floor(seconds / 60)
+  const remainSeconds = seconds % 60
+  return `${minutes}分${remainSeconds}秒`
+}
+
+// 启动已用时间计时器
+function startElapsedTimer(agentId: string) {
+  requestStartTimes.value[agentId] = Date.now()
+  elapsedTimes.value[agentId] = '0秒'
+  ensureElapsedTimerRunning()
+}
+
+// 停止某个agent的已用时间计时器
+function stopElapsedTimer(agentId: string) {
+  delete requestStartTimes.value[agentId]
+  delete elapsedTimes.value[agentId]
+  // 如果没有任何agent在计时，停止全局定时器
+  if (Object.keys(requestStartTimes.value).length === 0 && elapsedTimerInterval) {
+    clearInterval(elapsedTimerInterval)
+    elapsedTimerInterval = null
+  }
+}
+
+// 确保全局定时器运行（更新所有agent的已用时间）
+function ensureElapsedTimerRunning() {
+  if (elapsedTimerInterval) return
+  elapsedTimerInterval = setInterval(() => {
+    const now = Date.now()
+    for (const agentId of Object.keys(requestStartTimes.value)) {
+      const start = requestStartTimes.value[agentId]
+      if (start) {
+        elapsedTimes.value[agentId] = formatElapsed(now - start)
+      }
+    }
+  }, 1000)
+}
+
+// 已订阅的agent ID集合（用于跟踪避免重复订阅）
+const subscribedAgentIds = ref<Set<string>>(new Set())
 
 // 启动 spinner 动画
 function startSpinner() {
@@ -364,26 +423,30 @@ onUnmounted(() => {
   // 停止 spinner
   stopSpinner()
 
+  // 停止已用时间计时器
+  if (elapsedTimerInterval) {
+    clearInterval(elapsedTimerInterval)
+    elapsedTimerInterval = null
+  }
+
   // 保存当前消息历史
   if (selectedAgent.value && messages.value.length > 0) {
     messageHistory.value[selectedAgent.value.id] = [...messages.value]
     saveMessageHistory()
   }
 
-  // 取消订阅
-  if (selectedAgent.value) {
-    cliWebSocket.unsubscribe(selectedAgent.value.id)
-  }
+  // 取消所有已订阅的agent
+  subscribedAgentIds.value.forEach(agentId => {
+    cliWebSocket.unsubscribe(agentId)
+  })
+  subscribedAgentIds.value.clear()
   // 不断开连接，让其他组件可以继续使用
 })
 
 // 监听selectedAgent变化
 watch(selectedAgent, (newAgent, oldAgent) => {
-  // 取消旧Agent的订阅
-  if (oldAgent) {
-    cliWebSocket.unsubscribe(oldAgent.id)
-    // 注意：不重置currentOutputs，保留正在接收的消息
-  }
+  // 不再取消旧Agent的订阅，保持所有已订阅agent的WebSocket连接
+  // 这样即使切换了agent，旧agent的响应仍然能被接收并保存到messageHistory
 
   if (newAgent) {
     // 加载该agent的消息历史
@@ -394,8 +457,8 @@ watch(selectedAgent, (newAgent, oldAgent) => {
     // 更新agent状态
     refreshAgentStatus()
 
-    // 订阅WebSocket输出
-    if (wsConnected.value) {
+    // 订阅WebSocket输出（如果尚未订阅）
+    if (wsConnected.value && !subscribedAgentIds.value.has(newAgent.id)) {
       subscribeToAgent(newAgent.id)
     }
   }
@@ -416,10 +479,14 @@ async function loadAgents() {
 
 // 订阅Agent的WebSocket输出
 function subscribeToAgent(agentId: string) {
-  // 先取消之前的订阅（如果有）
-  cliWebSocket.unsubscribe(agentId)
+  // 如果已经订阅，不重复订阅
+  if (subscribedAgentIds.value.has(agentId)) {
+    console.log('Already subscribed to agent:', agentId)
+    return
+  }
 
   console.log('Subscribing to agent:', agentId)
+  subscribedAgentIds.value.add(agentId)
 
   // 订阅标准输出
   cliWebSocket.subscribeOutput(agentId, (data) => {
@@ -439,11 +506,7 @@ function subscribeToAgent(agentId: string) {
           startSpinner()
         }
       } else if (parsed.content) {
-        // 停止该agent的状态指示器
-        cliStatusStates.value[agentId] = null
-        if (isSelected) {
-          stopSpinner()
-        }
+        // 内容输出 - 不再直接清除状态，交给updateAssistantMessage处理
 
         // 追加到当前输出（按agent存储）- 无论是否选中都保存
         const current = currentOutputs.value[agentId] || ''
@@ -457,11 +520,7 @@ function subscribeToAgent(agentId: string) {
         updateAssistantMessage(currentOutputs.value[agentId], agentId)
       }
     } else if (data.type === 'text_delta') {
-      // 流式文本片段（--print模式）或完整响应
-      cliStatusStates.value[agentId] = null
-      if (isSelected) {
-        stopSpinner()
-      }
+      // 流式文本片段（--print模式）或完整响应 - 不再直接清除状态
 
       // 追加文本（如果内容不为空）- 无论是否选中都保存
       if (data.content) {
@@ -474,6 +533,7 @@ function subscribeToAgent(agentId: string) {
       // 响应完成信号 - 无论是否选中都清理该agent的状态
       cliStatusStates.value[agentId] = null
       loadingStates.value[agentId] = false
+      stopElapsedTimer(agentId)
       if (isSelected) {
         stopSpinner()
       }
@@ -493,6 +553,7 @@ function subscribeToAgent(agentId: string) {
     // 清理该agent的状态（无论是否选中）
     cliStatusStates.value[agentId] = null
     loadingStates.value[agentId] = false
+    stopElapsedTimer(agentId)
     if (selectedAgent.value?.id === agentId) {
       stopSpinner()
     }
@@ -504,12 +565,23 @@ function subscribeToAgent(agentId: string) {
   // 订阅状态变化
   cliWebSocket.subscribeStatus(agentId, (data) => {
     console.log('Status change:', data)
-    if (selectedAgent.value && data.status) {
-      selectedAgent.value.status = data.status
+    if (data.status) {
       // 更新列表中的状态
       const index = agents.value.findIndex(a => a.id === agentId)
       if (index !== -1) {
         agents.value[index].status = data.status
+      }
+      // 更新选中agent的状态
+      if (selectedAgent.value?.id === agentId) {
+        selectedAgent.value.status = data.status
+      }
+
+      // 当状态变为EXECUTING时，在聊天区显示"执行中..."状态
+      if (data.status === 'EXECUTING' && loadingStates.value[agentId]) {
+        cliStatusStates.value[agentId] = { action: '执行中...', detail: 'Agent正在处理请求' }
+        if (selectedAgent.value?.id === agentId) {
+          startSpinner()
+        }
       }
     }
   })
@@ -522,11 +594,15 @@ function updateAssistantMessage(content: string, targetAgentId?: string) {
 
   const isSelected = selectedAgent.value?.id === agentId
 
-  // 收到实际内容，更新该agent的状态
-  cliStatusStates.value[agentId] = null
-  loadingStates.value[agentId] = false
-  if (isSelected) {
-    stopSpinner()
+  // 收到实际内容时，更新状态为"接收响应中..."而不是直接清除
+  // 保持loading状态和计时器运行，直到done事件到来
+  if (loadingStates.value[agentId]) {
+    cliStatusStates.value[agentId] = { action: '接收响应中...', detail: '正在接收Agent输出' }
+  } else {
+    cliStatusStates.value[agentId] = null
+    if (isSelected) {
+      stopSpinner()
+    }
   }
 
   // 获取该agent的消息列表
@@ -630,8 +706,8 @@ async function handleStartAgent(agent: Agent) {
       }
     }
 
-    // 如果是当前选中的agent，订阅输出
-    if (selectedAgent.value?.id === agent.id && wsConnected.value) {
+    // 订阅agent输出（subscribeToAgent内部会检查是否已订阅）
+    if (wsConnected.value) {
       subscribeToAgent(agent.id)
     }
 
@@ -681,6 +757,7 @@ async function sendMessage() {
   currentOutputs.value[agentId] = ''
   cliStatusStates.value[agentId] = { action: '发送请求...' }
   loadingStates.value[agentId] = true
+  startElapsedTimer(agentId)
   startSpinner()
 
   try {
@@ -691,6 +768,7 @@ async function sendMessage() {
       stopSpinner()
       cliStatusStates.value[agentId] = null
       loadingStates.value[agentId] = false
+      stopElapsedTimer(agentId)
       // 更新最后一条空消息为错误信息（同时更新历史）
       updateAssistantMessage('❌ 发送失败，请检查Agent状态', agentId)
     }
@@ -699,6 +777,7 @@ async function sendMessage() {
     stopSpinner()
     cliStatusStates.value[agentId] = null
     loadingStates.value[agentId] = false
+    stopElapsedTimer(agentId)
     // 更新最后一条空消息为错误信息（同时更新历史）
     updateAssistantMessage(`❌ 发送失败: ${error.message || '未知错误'}`, agentId)
   }
@@ -1123,6 +1202,14 @@ function getStatusType(status: string): string {
 .status-detail {
   font-size: 12px;
   opacity: 0.9;
+}
+
+.status-elapsed {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.95;
+  white-space: nowrap;
 }
 
 @keyframes pulse {

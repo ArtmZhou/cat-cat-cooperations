@@ -181,9 +181,58 @@ private String buildAgentPrompt(String groupId, String content, String currentAg
 
 ---
 
-## 6. 测试验证
+## 6. 聊天室多Agent并行对话与状态增强
 
-### 6.1 群聊@提及输入
+### 6.1 问题描述
+
+聊天室存在三个问题：
+1. **多Agent并行对话消息丢失**: 同时与2个Agent对话时，切换Agent后旧Agent的WebSocket订阅被取消，导致该Agent的响应内容丢失无法显示。
+2. **执行中无状态提示**: 发送请求后显示"发送请求..."，但当Agent进入EXECUTING状态后，聊天页面中没有显示"执行中..."状态提示，用户无法感知Agent正在处理。
+3. **缺少耗时显示**: 用户无法知道请求已经执行了多长时间。
+
+### 6.2 修改方案
+
+1. **保持所有Agent订阅**: 切换Agent时不再取消旧Agent的WebSocket订阅，使用`subscribedAgentIds`集合跟踪已订阅的Agent，避免重复订阅。
+2. **EXECUTING状态映射**: 在状态变化WebSocket回调中，当Agent状态变为`EXECUTING`时，同步更新`cliStatusStates`显示"执行中..."。
+3. **请求耗时计时器**: 新增按Agent独立计时的已用时间显示，从发送请求开始到`done`/`error`事件结束。
+
+### 6.3 修改文件
+
+| 文件 | 修改内容 |
+|------|----------|
+| `cat-web/src/views/chat/ChatRoomView.vue` | WebSocket订阅管理重构、执行状态显示、耗时计时器 |
+
+### 6.4 新增状态变量
+
+| 变量 | 类型 | 说明 |
+|------|------|------|
+| `subscribedAgentIds` | `ref<Set<string>>` | 已订阅WebSocket的Agent ID集合 |
+| `requestStartTimes` | `ref<Record<string, number>>` | 按agentId存储请求开始时间戳 |
+| `elapsedTimes` | `ref<Record<string, string>>` | 按agentId存储已格式化的耗时字符串 |
+| `elapsedTime` | `computed<string>` | 当前选中Agent的耗时显示 |
+
+### 6.5 新增方法
+
+| 方法 | 说明 |
+|------|------|
+| `formatElapsed(ms)` | 将毫秒格式化为"X秒"或"X分Y秒" |
+| `startElapsedTimer(agentId)` | 记录请求开始时间，启动全局计时器 |
+| `stopElapsedTimer(agentId)` | 清除该Agent的计时，无Agent计时时停止全局计时器 |
+| `ensureElapsedTimerRunning()` | 确保全局1秒定时器运行（更新所有Agent的elapsedTimes） |
+
+### 6.6 关键修改点
+
+1. **WebSocket订阅不再取消**: `watch(selectedAgent)` 中移除 `cliWebSocket.unsubscribe(oldAgent.id)` 调用。`subscribeToAgent`内部通过`subscribedAgentIds`检查避免重复订阅。`onUnmounted`统一取消所有已订阅Agent。
+2. **EXECUTING状态显示**: `subscribeStatus`回调中，当`data.status === 'EXECUTING'`且Agent处于loading状态时，设置`cliStatusStates[agentId] = { action: '执行中...', detail: 'Agent正在处理请求' }`。
+3. **耗时计时器**: `sendMessage`调用`startElapsedTimer(agentId)`。`done`和`error`事件调用`stopElapsedTimer(agentId)`。全局`setInterval`每秒更新所有正在计时的Agent的`elapsedTimes`。
+4. **流式接收状态**: `updateAssistantMessage`在收到内容且Agent仍在loading状态时，将状态更新为"接收响应中..."而不是清除状态栏，保持耗时计时器可见。
+5. **模板变更**: 状态栏增加 `v-if="elapsedTime"` 的耗时显示区域 `⏱️ {{ elapsedTime }}`。
+
+---
+
+## 7. 测试验证
+
+### 7.1 群聊@提及输入
 
 1. 进入群聊页面，选择一个群组
 2. 在输入框中输入`@`，验证弹出Agent选择弹窗
@@ -192,7 +241,7 @@ private String buildAgentPrompt(String groupId, String content, String currentAg
 5. 验证选中的Agent出现在mentioned标签中
 6. 验证原有@按钮仍可正常使用
 
-### 6.2 群聊Agent上下文感知
+### 7.2 群聊Agent上下文感知
 
 1. 创建包含2+个Agent的群聊
 2. 发送一条广播消息
@@ -200,7 +249,7 @@ private String buildAgentPrompt(String groupId, String content, String currentAg
 4. 再发送一条消息
 5. 验证Agent2的回复中体现了对Agent1回复的感知
 
-### 6.3 聊天室会话记录恢复
+### 7.3 聊天室会话记录恢复
 
 1. 进入聊天室，选择一个Agent
 2. 发送几条消息，等待回复
@@ -208,7 +257,7 @@ private String buildAgentPrompt(String groupId, String content, String currentAg
 4. 再切回聊天室页面
 5. 验证之前选中的Agent仍然选中，消息历史正确显示
 
-### 6.4 聊天室状态隔离
+### 7.4 聊天室状态隔离
 
 1. 进入聊天室，选择Agent1，发送消息
 2. 等待Agent1开始处理（显示"发送请求..."或spinner）
@@ -218,9 +267,38 @@ private String buildAgentPrompt(String groupId, String content, String currentAg
 6. 切换回Agent1，验证Agent1的处理状态正确显示
 7. 等待Agent1完成，验证状态正确清除
 
-### 6.5 聊天室错误处理
+### 7.5 聊天室错误处理
 
 1. 向未运行的Agent发送消息（如果界面允许）
 2. 验证错误信息正确显示在消息列表中
 3. 验证错误信息被保存到消息历史中
 4. 切换到其他页面再切回来，验证错误信息仍然显示
+
+### 7.6 聊天室多Agent并行对话
+
+1. 进入聊天室，选择Agent1，发送一条消息
+2. 在Agent1处理期间，立即切换到Agent2
+3. 向Agent2也发送一条消息
+4. 切换回Agent1
+5. 验证Agent1的对话内容已正确显示（响应未丢失）
+6. 切换到Agent2，验证Agent2的对话内容也正确显示
+7. 验证两个Agent的消息历史互不干扰
+
+### 7.7 聊天室执行状态提示
+
+1. 选择一个运行中的Agent
+2. 发送一条消息
+3. 验证状态栏先显示"发送请求..."
+4. 验证API返回后状态栏变为"执行中..."
+5. 验证开始接收输出后状态栏变为"接收响应中..."
+6. 验证响应完成后状态栏消失
+
+### 7.8 聊天室耗时显示
+
+1. 选择一个运行中的Agent
+2. 发送一条消息
+3. 验证状态栏右侧显示"⏱️ X秒"的计时器
+4. 验证计时器每秒更新
+5. 超过60秒时验证显示格式变为"X分Y秒"
+6. 验证响应完成后计时器消失
+7. 在Agent处理期间切换到其他Agent再切回来，验证计时器仍在正确计时
