@@ -35,18 +35,16 @@
 - 新增stdin/stdout管道通信
 - 敏感配置加密存储
 
-**群聊与聊天室功能修复 (2026-04-15)**:
+**群聊功能修复 (2026-04-15)**:
 
 - **群聊@提及输入优化**: 群聊输入框支持直接输入`@`触发Agent选择弹窗，支持按名称实时筛选、键盘上下箭头导航和Enter选择，同时保留原有的@按钮手动选择方式
 - **群聊Agent上下文感知**: 群聊中Agent能够感知其他参与者的消息，发送给Agent的prompt包含最近20条群聊历史记录，标注各消息的发送者身份（用户/其他Agent/自己），使Agent理解完整的群聊对话上下文
-- **聊天室会话记录恢复**: 修复聊天室中与Agent聊天后切换到其他页面再切回时会话记录丢失的问题，通过localStorage持久化选中的Agent和消息历史，页面重新进入后自动恢复之前的会话状态
-- **聊天室状态隔离**: 修复与agent1对话时agent2页面也显示「发送请求...」的问题，将isLoading和cliStatus从全局状态改为按Agent ID存储的状态Map，各Agent的加载状态和CLI状态完全独立互不影响
-- **聊天室错误处理改进**: 修复发送失败时错误信息仅修改内存对象但未持久化到messageHistory的问题，使用updateAssistantMessage统一更新消息和历史
-- **聊天室多Agent并行对话**: 修复同时与多个Agent对话时切换Agent导致旧Agent响应丢失的问题，WebSocket订阅不再随Agent切换取消，所有已订阅Agent的输出均被持续接收并保存到messageHistory
-- **聊天室执行状态提示**: 新增Agent进入EXECUTING状态时在聊天区显示"执行中..."提示，以及接收响应时显示"接收响应中..."提示，用户全程可感知处理进度
-- **聊天室请求耗时显示**: 新增请求耗时计时器，从发送请求开始到响应完成，在状态栏右侧实时显示已用时间（格式：X秒/X分Y秒），支持多Agent独立计时
-- **聊天室 / 群聊推送彻底隔离**: 修复群聊中 agent 回复串入聊天室单聊的问题。后端现在会根据群聊上下文路由 WebSocket 推送：群聊执行时不再把 `output / text_delta / error / done / EXECUTING` 推送到聊天室 topic，仅在任务结束后同步最终 `RUNNING` 状态，既保证隔离又不影响聊天室多 Agent 并行对话
+- **群聊推送隔离**: 后端现在会根据群聊上下文路由 WebSocket 推送：群聊执行时不再把 `output / text_delta / error / done / EXECUTING` 推送到个人 topic，仅在任务结束后同步最终 `RUNNING` 状态
 - **群聊错误收尾修复**: 群聊执行失败时会正确清理群聊上下文与 streaming spinner，并在群聊消息中追加系统错误提示，避免残留状态污染下一次会话
+
+**移除功能**:
+
+- **聊天室（ChatRoom）**: 移除聊天室页面及相关前端路由，Agent单聊功能可通过CLI Agent详情页进行
 
 ---
 
@@ -226,10 +224,13 @@ mvn spring-boot:run -pl cat-standalone
 - 所有标注module为cat-auth/cat-agent/cat-task等的features更新为cat-standalone
 
 ### 2026-04-06
-- **聊天室功能增强**:
-  - 新增消息历史持久化：使用 localStorage 保存聊天记录，刷新页面后仍可查看
-  - 新增 CLI 状态指示器：实时显示 Claude CLI 执行状态，动态 spinner 动画
-  - 新增状态解析：区分 CLI 输出中的状态信息和实际响应内容
+- **群聊功能增强**:
+  - 群聊@提及输入优化
+  - 群聊Agent上下文感知
+  - 群聊推送隔离修复
+- **聊天室功能移除**:
+  - 移除聊天室（ChatRoom）页面和前端路由
+  - 移除侧边栏聊天室菜单入口
 - **日志中文乱码修复**:
   - 新增 `logback-spring.xml` 配置文件，明确指定 UTF-8 编码
   - 更新 `application.yml` 添加日志编码配置
