@@ -622,6 +622,27 @@
         "Given Token使用记录, When 查询统计, Then 返回按时间聚合的使用量",
         "Given Agent执行多个任务, When 查询Token使用, Then 显示总量和费用估算"
       ]
+    },
+    {
+      "id": "FEAT-038",
+      "name": "前端深色科技风UI重构",
+      "description": "全面重构前端界面为深色科技风主题，紫蓝渐变配色，定制SVG猫猫图标，毛玻璃效果，Element Plus深色覆盖",
+      "status": "passing",
+      "wave": 2,
+      "priority": "medium",
+      "dependencies": [
+        "FEAT-027"
+      ],
+      "module": "cat-web",
+      "acceptanceCriteria": [
+        "Given 打开前端页面, When 查看整体风格, Then 显示深色科技风主题（深色背景+紫蓝渐变高亮）",
+        "Given 查看侧边栏, When 导航切换, Then 显示渐变激活指示条和自定义SVG图标",
+        "Given 查看顶栏, When 观察效果, Then 显示毛玻璃（Glassmorphism）效果",
+        "Given 查看仪表盘, When 统计卡片渲染, Then 显示渐变图标背景和渐变数值文字",
+        "Given 查看CLI Agent列表, When Agent运行中, Then 状态标签显示呼吸动效",
+        "Given 查看群聊页面, When 发送消息, Then 用户消息显示紫色渐变气泡",
+        "Given 查看登录页面, When 页面加载, Then 保持原有独立设计不受影响"
+      ]
     }
   ],
   "milestones": [

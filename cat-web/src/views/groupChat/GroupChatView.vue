@@ -780,35 +780,39 @@ function getAgentStatusText(status: string): string {
 }
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
+@use '@/assets/styles/variables' as *;
+
 .group-chat {
   display: flex;
   height: calc(100vh - 64px - 48px);
-  background: white;
-  border-radius: 12px;
+  background: $bg-surface;
+  border-radius: $radius-lg;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(139, 115, 85, 0.08);
+  border: 1px solid $border-subtle;
 }
 
-/* 左侧群组列表 */
+// ===== Left sidebar =====
 .chat-sidebar {
   width: 280px;
-  border-right: 1px solid #F0E6D8;
+  background: $bg-deep;
+  border-right: 1px solid $border-subtle;
   display: flex;
   flex-direction: column;
 }
 
 .sidebar-header {
   padding: 16px;
-  border-bottom: 1px solid #F0E6D8;
+  border-bottom: 1px solid $border-subtle;
   display: flex;
   justify-content: space-between;
   align-items: center;
-}
 
-.sidebar-header h3 {
-  margin: 0;
-  font-size: 16px;
+  h3 {
+    margin: 0;
+    font-size: 16px;
+    color: $text-primary;
+  }
 }
 
 .group-list {
@@ -822,28 +826,40 @@ function getAgentStatusText(status: string): string {
   align-items: center;
   gap: 12px;
   cursor: pointer;
-  border-bottom: 1px solid #F5F5F5;
+  border-bottom: 1px solid rgba(124, 58, 237, 0.05);
   transition: background 0.2s;
-}
+  position: relative;
 
-.group-item:hover {
-  background: #FFF9F5;
-}
+  &:hover {
+    background: $bg-hover;
+  }
 
-.group-item.active {
-  background: #FFF5E6;
-  border-left: 3px solid #FF8C42;
+  &.active {
+    background: $bg-surface;
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 8px;
+      bottom: 8px;
+      width: 3px;
+      border-radius: 0 3px 3px 0;
+      background: linear-gradient(180deg, $color-violet, $color-cyan);
+    }
+  }
 }
 
 .group-avatar {
   width: 40px;
   height: 40px;
-  background: #E6F7FF;
-  border-radius: 10px;
+  background: linear-gradient(135deg, $color-violet-dim, $color-cyan-dim);
+  border-radius: $radius-md;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 20px;
+  flex-shrink: 0;
 }
 
 .group-info {
@@ -854,6 +870,7 @@ function getAgentStatusText(status: string): string {
 .group-name {
   font-weight: 600;
   font-size: 14px;
+  color: $text-primary;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -861,24 +878,25 @@ function getAgentStatusText(status: string): string {
 
 .group-meta {
   font-size: 12px;
-  color: #8C8C8C;
+  color: $text-muted;
 }
 
-/* 右侧聊天区域 */
+// ===== Right chat area =====
 .chat-main {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  background: $bg-base;
 }
 
 .chat-header {
   padding: 12px 20px;
-  border-bottom: 1px solid #F0E6D8;
+  border-bottom: 1px solid $border-subtle;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #FAFAFA;
+  background: $bg-surface;
   flex-wrap: wrap;
   gap: 8px;
 }
@@ -890,18 +908,26 @@ function getAgentStatusText(status: string): string {
 }
 
 .group-avatar-large {
-  font-size: 32px;
+  font-size: 28px;
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, $color-violet-dim, $color-cyan-dim);
+  border-radius: $radius-md;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .header-text h2 {
   margin: 0;
   font-size: 16px;
+  color: $text-primary;
 }
 
 .header-text p {
   margin: 2px 0 0;
   font-size: 12px;
-  color: #8C8C8C;
+  color: $text-muted;
 }
 
 .header-actions {
@@ -921,28 +947,33 @@ function getAgentStatusText(status: string): string {
   font-size: 11px;
 }
 
-/* 消息区域 */
+// ===== Messages =====
 .chat-messages {
   flex: 1;
   overflow-y: auto;
   padding: 20px;
-  background: #FAFAFA;
+  background: $bg-base;
 }
 
 .empty-chat {
   text-align: center;
   padding: 60px 20px;
-  color: #8C8C8C;
-}
+  color: $text-muted;
 
-.empty-chat .empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-}
+  .empty-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+  }
 
-.empty-chat .hint {
-  font-size: 12px;
-  color: #BFBFBF;
+  p {
+    color: $text-secondary;
+  }
+
+  .hint {
+    font-size: 12px;
+    color: $text-muted;
+  }
 }
 
 .message {
@@ -954,24 +985,24 @@ function getAgentStatusText(status: string): string {
 .message-avatar {
   width: 36px;
   height: 36px;
-  background: #FFF;
-  border-radius: 8px;
+  background: $bg-surface;
+  border-radius: $radius-sm;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 18px;
   flex-shrink: 0;
-  border: 1px solid #F0E6D8;
+  border: 1px solid $border-subtle;
 }
 
 .message.user .message-avatar {
-  background: #FF8C42;
-  border-color: #FF8C42;
+  background: linear-gradient(135deg, $color-violet, $color-cyan);
+  border-color: transparent;
 }
 
 .message.system .message-avatar {
-  background: #F0F0F0;
-  border-color: #E0E0E0;
+  background: $bg-hover;
+  border-color: $border-subtle;
 }
 
 .message-content {
@@ -992,60 +1023,76 @@ function getAgentStatusText(status: string): string {
   font-size: 13px;
 }
 
-.sender-user { color: #FF8C42; }
-.sender-agent { color: #1890FF; }
-.sender-system { color: #8C8C8C; }
+.sender-user {
+  background: linear-gradient(135deg, $color-violet, $color-cyan);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.sender-agent { color: $status-running; }
+.sender-system { color: $text-muted; }
 
 .broadcast-tag {
   font-size: 11px;
-  color: #FAAD14;
+  color: $warning;
 }
 
 .mention-tag {
   font-size: 11px;
-  color: #1890FF;
+  color: $color-violet;
 }
 
 .time {
   font-size: 11px;
-  color: #BFBFBF;
+  color: $text-muted;
 }
 
 .message-text {
-  background: white;
+  background: $bg-surface;
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: $radius-md;
   font-size: 14px;
   line-height: 1.6;
-  border: 1px solid #F0E6D8;
+  border: 1px solid $border-subtle;
+  color: $text-primary;
   word-break: break-word;
+
+  :deep(code) {
+    background: $bg-hover;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 13px;
+  }
 }
 
 .message.user .message-text {
-  background: #FFF5E6;
-  border-color: #FFE8CC;
+  background: rgba(124, 58, 237, 0.08);
+  border-color: rgba(124, 58, 237, 0.15);
 }
 
 .message.system .message-text {
-  background: #F7F7F7;
-  border-color: #E8E8E8;
+  background: $bg-hover;
+  border-color: $border-subtle;
   font-size: 13px;
-  color: #666;
+  color: $text-secondary;
 }
 
 .message.agent .message-text {
-  background: #F0F9FF;
-  border-color: #BAE7FF;
+  background: $bg-surface;
+  border-color: $border-subtle;
+  border-left: 3px solid $color-violet;
 }
 
 .message.streaming .message-text {
-  border-color: #91D5FF;
-  animation: pulse 2s infinite;
+  border-color: rgba(124, 58, 237, 0.3);
+  animation: breathe 2s infinite;
 }
 
 .streaming-indicator {
   font-size: 12px;
-  color: #1890FF;
+  color: $color-violet;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1053,22 +1100,23 @@ function getAgentStatusText(status: string): string {
 
 .spinner-icon {
   font-weight: bold;
+  color: $color-violet;
 }
 
 .empty-content {
-  color: #BFBFBF;
+  color: $text-muted;
 }
 
-/* @Mention弹窗 */
+// ===== @Mention Popup =====
 .mention-popup {
   position: absolute;
   bottom: 100%;
   left: 0;
   right: 0;
-  background: white;
-  border: 1px solid #F0E6D8;
-  border-radius: 8px;
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
+  background: $bg-elevated;
+  border: 1px solid $border-active;
+  border-radius: $radius-md;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
   max-height: 200px;
   overflow-y: auto;
   z-index: 10;
@@ -1077,8 +1125,8 @@ function getAgentStatusText(status: string): string {
 .mention-header {
   padding: 8px 12px;
   font-size: 12px;
-  color: #8C8C8C;
-  border-bottom: 1px solid #F5F5F5;
+  color: $text-muted;
+  border-bottom: 1px solid $border-subtle;
 }
 
 .mention-item {
@@ -1088,25 +1136,27 @@ function getAgentStatusText(status: string): string {
   gap: 8px;
   cursor: pointer;
   transition: background 0.2s;
-}
+  color: $text-secondary;
 
-.mention-item:hover {
-  background: #FFF9F5;
-}
+  &:hover {
+    background: $bg-hover;
+  }
 
-.mention-item.selected {
-  background: #E6F7FF;
-}
+  &.selected {
+    background: $color-violet-dim;
+  }
 
-.mention-item.highlighted {
-  background: #FFF5E6;
-  outline: 1px solid #FF8C42;
+  &.highlighted {
+    background: $color-violet-dim;
+    outline: 1px solid $color-violet;
+    outline-offset: -1px;
+  }
 }
 
 .mention-empty {
   padding: 12px;
   text-align: center;
-  color: #8C8C8C;
+  color: $text-muted;
   font-size: 13px;
 }
 
@@ -1117,27 +1167,28 @@ function getAgentStatusText(status: string): string {
 .mention-name {
   flex: 1;
   font-size: 13px;
+  color: $text-primary;
 }
 
 .mention-check {
-  color: #1890FF;
+  color: $color-violet;
 }
 
-/* 已选@标签 */
+// ===== Mention Tags =====
 .mention-tags {
   padding: 4px 8px;
   display: flex;
   align-items: center;
   gap: 4px;
   flex-wrap: wrap;
-  border-bottom: 1px solid #F5F5F5;
+  border-bottom: 1px solid $border-subtle;
 }
 
-/* 输入区域 */
+// ===== Chat Input =====
 .chat-input {
   padding: 12px 20px;
-  border-top: 1px solid #F0E6D8;
-  background: white;
+  border-top: 1px solid $border-subtle;
+  background: $bg-surface;
   position: relative;
 }
 
@@ -1164,36 +1215,39 @@ function getAgentStatusText(status: string): string {
 
 .input-hints {
   font-size: 12px;
-  color: #8C8C8C;
+  color: $text-muted;
 }
 
-/* 未选择群组 */
+// ===== No Group Selected =====
 .no-group-selected {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #8C8C8C;
+  color: $text-muted;
+  background: $bg-base;
+
+  .empty-icon {
+    font-size: 64px;
+    margin-bottom: 20px;
+    opacity: 0.4;
+  }
+
+  h2 {
+    margin: 0 0 8px;
+    color: $text-primary;
+  }
 }
 
-.no-group-selected .empty-icon {
-  font-size: 64px;
-  margin-bottom: 20px;
-}
-
-.no-group-selected h2 {
-  margin: 0 0 8px;
-  color: #262626;
-}
-
-/* Agent选择器 */
+// ===== Agent Selector (in dialog) =====
 .agent-selector {
   max-height: 200px;
   overflow-y: auto;
-  border: 1px solid #F0E6D8;
-  border-radius: 8px;
+  border: 1px solid $border-subtle;
+  border-radius: $radius-md;
   padding: 8px;
+  background: $bg-surface;
 }
 
 .agent-checkbox-item {
@@ -1206,8 +1260,8 @@ function getAgentStatusText(status: string): string {
   gap: 8px;
 }
 
-@keyframes pulse {
+@keyframes breathe {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.85; }
+  50% { opacity: 0.6; }
 }
 </style>

@@ -35,6 +35,21 @@
 - 新增stdin/stdout管道通信
 - 敏感配置加密存储
 
+**前端深色科技风UI重构 (2026-04-15)**:
+
+- **全新设计系统**: 深色科技风（Dark Tech）主题，紫蓝渐变配色方案（Violet #7C3AED → Cyan #06B6D4）
+- **SCSS设计令牌**: 全新 `_variables.scss` 定义深色调色板、语义色彩、边框、阴影、间距、圆角等设计令牌
+- **Element Plus深色覆盖**: 通过CSS Custom Properties全局覆盖Element Plus组件为深色主题（对话框、选择器、标签、按钮、输入框等）
+- **定制SVG图标系统**: 新增 `CatIcons.vue` 组件，包含12个科技风SVG图标（CatLogo、RobotAgent、GroupChat、Dashboard、Terminal、Lightning等）
+- **AppLayout重构**: 深色侧边栏（渐变Logo文字、自定义导航、渐变激活指示条）+ 毛玻璃顶栏（backdrop-filter）+ 渐变环头像
+- **仪表盘重构**: 深色统计卡片（渐变图标背景、渐变数值文字）、快速操作卡片
+- **CLI Agent列表页**: 深色卡片样式、状态标签动画（运行中呼吸动效、执行中脉冲环动效）
+- **群聊页面**: 深色聊天界面、紫色渐变消息气泡、暗色@提及弹窗、流式动画
+- **Agent管理页**: 适配深色卡片主题
+- **全局动画**: breathe、pulse-ring、gradient-shift CSS动画
+- **工具类**: .gradient-text、.gradient-border CSS实用类
+- **登录页**: 保持原有设计不变（独立配色方案）
+
 **群聊功能修复 (2026-04-15)**:
 
 - **群聊@提及输入优化**: 群聊输入框支持直接输入`@`触发Agent选择弹窗，支持按名称实时筛选、键盘上下箭头导航和Enter选择，同时保留原有的@按钮手动选择方式
@@ -141,6 +156,18 @@
 ---
 
 ## 架构变更记录
+
+### 2026-04-15
+- **前端深色科技风UI重构**:
+  - 全新SCSS设计系统：`_variables.scss` 定义深色调色板令牌（$bg-deep, $color-violet, $color-cyan等）
+  - `main.scss` 使用 `@use` 现代Sass语法，全局Element Plus CSS Custom Properties深色覆盖
+  - 新增 `CatIcons.vue`：12个SVG图标组件（CatLogo, RobotAgent, GroupChatIcon等）
+  - `AppLayout.vue` 完全重写：深色侧边栏 + 毛玻璃顶栏 + 自定义导航
+  - `DashboardView.vue` 完全重写：深色统计卡片 + 渐变数值 + SVG图标
+  - `CliAgentListView.vue` 样式重写：深色卡片 + 状态动画（breathe/pulse-ring）
+  - `GroupChatView.vue` 样式重写：深色聊天 + 渐变消息气泡
+  - `AgentListView.vue` 样式重写：适配深色主题
+  - 登录页保持独立配色方案不变
 
 ### 2026-04-07
 - **Token使用记录持久化**: 将内存存储改为JSON文件持久化
