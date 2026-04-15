@@ -22,9 +22,9 @@ const routes = [
         component: () => import('@/views/dashboard/DashboardView.vue')
       },
       {
-        path: 'chat',
-        name: 'ChatRoom',
-        component: () => import('@/views/chat/ChatRoomView.vue')
+        path: 'group-chat',
+        name: 'GroupChat',
+        component: () => import('@/views/groupChat/GroupChatView.vue')
       },
       {
         path: 'cli-agents',

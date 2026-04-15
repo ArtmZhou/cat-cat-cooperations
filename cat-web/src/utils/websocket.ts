@@ -129,6 +129,60 @@ class CliWebSocketService {
       }
     })
   }
+
+  // 订阅群聊消息（新消息推送）
+  subscribeGroupMessage(groupId, callback) {
+    if (!this.client || !this.connected) {
+      console.warn('WebSocket not connected')
+      return null
+    }
+
+    const topic = `/topic/chat-group/${groupId}/message`
+    const subscription = this.client.subscribe(topic, (message) => {
+      try {
+        const data = JSON.parse(message.body)
+        callback(data)
+      } catch (e) {
+        callback({ type: 'message', content: message.body })
+      }
+    })
+
+    this.subscriptions.set(`group-msg-${groupId}`, subscription)
+    return subscription
+  }
+
+  // 订阅群聊Agent流式输出
+  subscribeGroupAgentOutput(groupId, callback) {
+    if (!this.client || !this.connected) {
+      console.warn('WebSocket not connected')
+      return null
+    }
+
+    const topic = `/topic/chat-group/${groupId}/agent-output`
+    const subscription = this.client.subscribe(topic, (message) => {
+      try {
+        const data = JSON.parse(message.body)
+        callback(data)
+      } catch (e) {
+        callback({ type: 'output', content: message.body })
+      }
+    })
+
+    this.subscriptions.set(`group-agent-output-${groupId}`, subscription)
+    return subscription
+  }
+
+  // 取消群聊订阅
+  unsubscribeGroup(groupId) {
+    const keys = [`group-msg-${groupId}`, `group-agent-output-${groupId}`]
+    keys.forEach(key => {
+      const sub = this.subscriptions.get(key)
+      if (sub) {
+        sub.unsubscribe()
+        this.subscriptions.delete(key)
+      }
+    })
+  }
 }
 
 // 单例模式

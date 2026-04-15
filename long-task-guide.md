@@ -61,7 +61,7 @@ cat-cat-cooperations/
 │       │   ├── cliAgent.js      # CLI Agent API
 │       │   └── task.js          # 任务API
 │       ├── views/               # 页面组件
-│       │   ├── chat/            # 聊天室
+│       │   ├── groupChat/        # 群聊
 │       │   ├── cliAgent/        # Agent管理
 │       │   └── task/            # 任务管理
 │       ├── utils/               # 工具类

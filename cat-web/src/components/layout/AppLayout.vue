@@ -20,9 +20,9 @@
           <el-icon><Monitor /></el-icon>
           <span>CLI Agent</span>
         </el-menu-item>
-        <el-menu-item index="/chat">
-          <el-icon><ChatDotRound /></el-icon>
-          <span>聊天室</span>
+        <el-menu-item index="/group-chat">
+          <el-icon><ChatRound /></el-icon>
+          <span>群聊</span>
         </el-menu-item>
         <el-menu-item index="/tasks">
           <el-icon><List /></el-icon>
@@ -71,7 +71,7 @@ import { useAuthStore } from '@/stores/auth'
 import {
   DataAnalysis,
   Monitor,
-  ChatDotRound,
+  ChatRound,
   List,
   TrendCharts,
   Fold,
