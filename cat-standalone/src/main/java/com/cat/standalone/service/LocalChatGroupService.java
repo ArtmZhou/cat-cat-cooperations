@@ -162,7 +162,7 @@ public class LocalChatGroupService implements ChatGroupService {
                 }
 
                 // 构建发送给agent的消息（包含群聊上下文）
-                String agentPrompt = buildAgentPrompt(content);
+                String agentPrompt = buildAgentPrompt(groupId, content, agentId);
                 boolean sent = cliSessionService.sendInput(agentId, agentPrompt);
 
                 if (sent) {
@@ -228,9 +228,65 @@ public class LocalChatGroupService implements ChatGroupService {
 
     // ===== 内部方法 =====
 
-    // TODO: 后续可扩展，添加群聊上下文信息（群组名称、发送者信息等）到agent的prompt中
-    private String buildAgentPrompt(String content) {
-        return content;
+    /**
+     * 构建发送给Agent的prompt，包含群聊上下文
+     * 让Agent能感知到群聊中其他参与者的消息
+     */
+    private String buildAgentPrompt(String groupId, String content, String currentAgentId) {
+        // 获取最近的群聊消息作为上下文（排除空内容的占位消息）
+        List<StoredChatGroupMessage> recentMessages = chatGroupMessageStore.find(
+            msg -> groupId.equals(msg.getGroupId()) && msg.getContent() != null && !msg.getContent().isEmpty());
+
+        recentMessages.sort(Comparator.comparing(StoredChatGroupMessage::getCreatedAt,
+            Comparator.nullsLast(Comparator.naturalOrder())));
+
+        // 最多取最近20条消息作为上下文
+        int contextLimit = 20;
+        int startIndex = Math.max(0, recentMessages.size() - contextLimit);
+        List<StoredChatGroupMessage> contextMessages = recentMessages.subList(startIndex, recentMessages.size());
+
+        // 如果没有历史消息，直接返回用户消息
+        if (contextMessages.isEmpty()) {
+            return content;
+        }
+
+        // 获取群组名称
+        String groupName = chatGroupStore.findById(groupId)
+            .map(StoredChatGroup::getName)
+            .orElse("群聊");
+
+        // 获取当前agent名称
+        String currentAgentName = cliAgentStore.findById(currentAgentId)
+            .map(StoredCliAgent::getName)
+            .orElse(currentAgentId);
+
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("[群聊上下文] 你正在参与群聊「").append(groupName).append("」，你的身份是「").append(currentAgentName).append("」。\n");
+        prompt.append("以下是最近的群聊记录，请结合上下文理解并回复最新消息：\n");
+        prompt.append("---\n");
+
+        for (StoredChatGroupMessage msg : contextMessages) {
+            String senderLabel;
+            if ("user".equals(msg.getSenderType())) {
+                senderLabel = "用户(" + msg.getSenderName() + ")";
+            } else if ("agent".equals(msg.getSenderType())) {
+                // 标注是否是当前agent自己的消息
+                if (currentAgentId.equals(msg.getSenderAgentId())) {
+                    senderLabel = "你(" + msg.getSenderName() + ")";
+                } else {
+                    senderLabel = msg.getSenderName();
+                }
+            } else {
+                senderLabel = "系统";
+            }
+            prompt.append(senderLabel).append(": ").append(msg.getContent()).append("\n");
+        }
+
+        prompt.append("---\n");
+        prompt.append("最新消息 - 用户: ").append(content).append("\n");
+        prompt.append("请以「").append(currentAgentName).append("」的身份回复。");
+
+        return prompt.toString();
     }
 
     private void addSystemMessage(String groupId, String content) {
