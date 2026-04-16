@@ -717,14 +717,21 @@ public class LocalChatGroupService implements ChatGroupService {
 
         if (nameToId.isEmpty()) return new ArrayList<>();
 
-        // 在内容中查找 @AgentName 模式
+        // 在内容中查找 @AgentName 模式（@前面必须是行首、空格或标点）
         List<String> mentioned = new ArrayList<>();
         for (Map.Entry<String, String> entry : nameToId.entrySet()) {
             String name = entry.getKey();
             String id = entry.getValue();
-            // 匹配 @AgentName（后面跟空格、标点、换行或末尾）
-            if (content.contains("@" + name)) {
-                mentioned.add(id);
+            String pattern = "@" + name;
+            int idx = content.indexOf(pattern);
+            while (idx >= 0) {
+                // 检查@前面是否是合法位置（行首、空格、标点、换行）
+                boolean validPrefix = idx == 0 || !Character.isLetterOrDigit(content.charAt(idx - 1));
+                if (validPrefix) {
+                    mentioned.add(id);
+                    break;
+                }
+                idx = content.indexOf(pattern, idx + 1);
             }
         }
 

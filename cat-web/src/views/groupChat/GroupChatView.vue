@@ -555,7 +555,7 @@ function subscribeToGroup(groupId: string) {
   })
 
   // Subscribe to auto-discussion status changes
-  cliWebSocket.subscribeGroupAutoDiscussionStatus(groupId, (data: any) => {
+  cliWebSocket.subscribeGroupAutoDiscussionStatus(groupId, (data: { groupId: string, running: boolean }) => {
     console.log('Auto-discussion status:', data)
     autoDiscussionRunning.value = data.running || false
   })
