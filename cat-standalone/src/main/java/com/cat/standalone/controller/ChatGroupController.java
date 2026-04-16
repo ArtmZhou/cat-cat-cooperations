@@ -54,12 +54,26 @@ public class ChatGroupController {
 
         // 更新自动讨论设置
         if (request.containsKey("autoDiscussion") || request.containsKey("maxAutoRounds")) {
-            Boolean autoDiscussion = request.get("autoDiscussion") != null
-                ? Boolean.valueOf(request.get("autoDiscussion").toString()) : null;
-            Integer maxAutoRounds = request.get("maxAutoRounds") != null
-                ? Integer.valueOf(request.get("maxAutoRounds").toString()) : null;
-            if (autoDiscussion != null || maxAutoRounds != null) {
-                group = chatGroupService.updateAutoDiscussionSettings(groupId, autoDiscussion, maxAutoRounds);
+            Boolean autoDiscussion = null;
+            Integer maxAutoRoundsVal = null;
+            try {
+                Object autoDiscObj = request.get("autoDiscussion");
+                if (autoDiscObj instanceof Boolean b) {
+                    autoDiscussion = b;
+                } else if (autoDiscObj != null) {
+                    autoDiscussion = Boolean.parseBoolean(autoDiscObj.toString());
+                }
+                Object maxRoundsObj = request.get("maxAutoRounds");
+                if (maxRoundsObj instanceof Number n) {
+                    maxAutoRoundsVal = n.intValue();
+                } else if (maxRoundsObj != null) {
+                    maxAutoRoundsVal = Integer.parseInt(maxRoundsObj.toString());
+                }
+            } catch (NumberFormatException e) {
+                return ApiResponse.error(400, "maxAutoRounds 必须是有效的数字");
+            }
+            if (autoDiscussion != null || maxAutoRoundsVal != null) {
+                group = chatGroupService.updateAutoDiscussionSettings(groupId, autoDiscussion, maxAutoRoundsVal);
             }
         }
 

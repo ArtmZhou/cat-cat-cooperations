@@ -67,6 +67,11 @@ public class LocalChatGroupService implements ChatGroupService {
             return t;
         });
 
+    @jakarta.annotation.PreDestroy
+    public void destroy() {
+        autoDiscussionScheduler.shutdownNow();
+    }
+
     private static String generateId(int length) {
         return UUID.randomUUID().toString().replace("-", "").substring(0, length);
     }
@@ -542,8 +547,8 @@ public class LocalChatGroupService implements ChatGroupService {
             boolean sent = cliSessionService.sendInput(agentId, agentPrompt);
 
             if (sent) {
-                log.info("Sent group message to agent {}: {}", agentId,
-                    content.substring(0, Math.min(50, content.length())));
+                String logContent = content != null ? content.substring(0, Math.min(50, content.length())) : "[auto-discussion]";
+                log.info("Sent group message to agent {}: {}", agentId, logContent);
                 // 注册agent的群聊上下文（用于输出转发）
                 agentGroupContext.put(agentId, groupId);
                 agentGroupOutputBuffers.put(agentId, new StringBuilder());
