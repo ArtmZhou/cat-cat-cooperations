@@ -131,6 +131,7 @@ cat-cat-cooperations/
 - `LocalCliTaskExecutionService` - Task execution
 - `LocalTokenUsageService` - Token usage tracking
 - `LocalCliOutputPushService` - WebSocket output push
+- `LocalChatGroupService` - Group chat with auto-discussion
 
 ### Data Storage
 
@@ -172,6 +173,15 @@ cat-cat-cooperations/
 
 **CLI Agent Monitoring:**
 - `GET /api/v1/cli-agents/monitor/overview` - System overview (used by dashboard)
+
+**Chat Groups (Multi-Agent Group Chat):**
+- `GET/POST /api/v1/chat-groups` - Group list/create
+- `GET/PUT/DELETE /api/v1/chat-groups/{id}` - Group operations
+- `POST /api/v1/chat-groups/{id}/messages` - Send message (with @mentions or broadcast)
+- `GET /api/v1/chat-groups/{id}/messages` - Get message history
+- `POST /api/v1/chat-groups/{id}/messages/clear` - Clear messages
+- `POST /api/v1/chat-groups/{id}/auto-discussion/stop` - Stop auto-discussion
+- `GET /api/v1/chat-groups/{id}/auto-discussion/status` - Get auto-discussion status
 
 ## Development Workflow
 
