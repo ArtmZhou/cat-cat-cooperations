@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -50,6 +51,18 @@ public class ChatGroupController {
         List<String> agentIds = (List<String>) request.get("agentIds");
 
         ChatGroupInfo group = chatGroupService.updateGroup(groupId, name, description, agentIds);
+
+        // 更新自动讨论设置
+        if (request.containsKey("autoDiscussion") || request.containsKey("maxAutoRounds")) {
+            Boolean autoDiscussion = request.get("autoDiscussion") != null
+                ? Boolean.valueOf(request.get("autoDiscussion").toString()) : null;
+            Integer maxAutoRounds = request.get("maxAutoRounds") != null
+                ? Integer.valueOf(request.get("maxAutoRounds").toString()) : null;
+            if (autoDiscussion != null || maxAutoRounds != null) {
+                group = chatGroupService.updateAutoDiscussionSettings(groupId, autoDiscussion, maxAutoRounds);
+            }
+        }
+
         return ApiResponse.success(group);
     }
 
@@ -104,5 +117,21 @@ public class ChatGroupController {
     public ApiResponse<Void> clearMessages(@PathVariable String groupId) {
         chatGroupService.clearGroupMessages(groupId);
         return ApiResponse.success();
+    }
+
+    @Operation(summary = "停止自动讨论", description = "中断群组中正在进行的自动讨论")
+    @PostMapping("/{groupId}/auto-discussion/stop")
+    public ApiResponse<Void> stopAutoDiscussion(@PathVariable String groupId) {
+        chatGroupService.stopAutoDiscussion(groupId);
+        return ApiResponse.success();
+    }
+
+    @Operation(summary = "获取自动讨论状态", description = "获取群组中自动讨论是否正在进行")
+    @GetMapping("/{groupId}/auto-discussion/status")
+    public ApiResponse<Map<String, Object>> getAutoDiscussionStatus(@PathVariable String groupId) {
+        boolean running = chatGroupService.isAutoDiscussionRunning(groupId);
+        Map<String, Object> status = new HashMap<>();
+        status.put("running", running);
+        return ApiResponse.success(status);
     }
 }

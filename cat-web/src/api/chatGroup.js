@@ -58,3 +58,19 @@ export function getGroupMessages(groupId, limit = 100) {
 export function clearGroupMessages(groupId) {
   return request.post(`/chat-groups/${groupId}/messages/clear`)
 }
+
+/**
+ * 停止自动讨论
+ * @param {string} groupId - 群组ID
+ */
+export function stopAutoDiscussion(groupId) {
+  return request.post(`/chat-groups/${groupId}/auto-discussion/stop`)
+}
+
+/**
+ * 获取自动讨论状态
+ * @param {string} groupId - 群组ID
+ */
+export function getAutoDiscussionStatus(groupId) {
+  return request.get(`/chat-groups/${groupId}/auto-discussion/status`)
+}
