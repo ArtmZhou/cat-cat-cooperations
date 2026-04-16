@@ -104,7 +104,7 @@
             <div class="empty-icon">💬</div>
             <p>开始群聊吧！</p>
             <p class="hint">发送消息给所有Agent，或在输入框中输入 @ 指定Agent</p>
-            <p v-if="autoDiscussionEnabled" class="hint">💡 自动讨论模式已开启，Agent会自动互相回应、讨论</p>
+            <p v-if="autoDiscussionEnabled" class="hint">💡 自动讨论模式已开启，Agent会通过@互相回应、讨论</p>
           </div>
 
           <div
@@ -147,7 +147,7 @@
           <!-- 自动讨论进行中指示器 -->
           <div v-if="autoDiscussionRunning && Object.keys(activeOutputs).length === 0" class="auto-discussion-indicator">
             <div class="discussion-pulse"></div>
-            <span>🔄 自动讨论进行中... Agent正在思考下一轮回应</span>
+            <span>🔄 自动讨论进行中... 等待被@的Agent回应</span>
           </div>
         </div>
 
@@ -276,7 +276,7 @@
               inactive-text="关闭"
             />
             <div v-if="groupForm.autoDiscussion" class="auto-discussion-desc">
-              <p>开启后，Agent会自动互相回应、讨论和博弈，无需每次@</p>
+              <p>开启后，Agent通过@指定成员来互相回应和讨论，只有被@的Agent才会响应</p>
               <el-form-item label="最大轮数" class="rounds-form-item">
                 <el-input-number
                   v-model="groupForm.maxAutoRounds"

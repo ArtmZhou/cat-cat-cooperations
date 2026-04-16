@@ -255,18 +255,34 @@ public class LocalChatGroupService implements ChatGroupService {
             return content;
         }
 
-        // 获取群组名称
-        String groupName = chatGroupStore.findById(groupId)
-            .map(StoredChatGroup::getName)
-            .orElse("群聊");
+        // 获取群组信息
+        StoredChatGroup group = chatGroupStore.findById(groupId).orElse(null);
+        String groupName = group != null ? group.getName() : "群聊";
 
         // 获取当前agent名称
         String currentAgentName = cliAgentStore.findById(currentAgentId)
             .map(StoredCliAgent::getName)
             .orElse(currentAgentId);
 
+        // 构建群成员列表（排除当前agent）
+        List<String> otherMemberNames = new ArrayList<>();
+        if (group != null && group.getAgentIds() != null) {
+            for (String aid : group.getAgentIds()) {
+                if (!aid.equals(currentAgentId)) {
+                    cliAgentStore.findById(aid).ifPresent(a -> otherMemberNames.add(a.getName()));
+                }
+            }
+        }
+
         StringBuilder prompt = new StringBuilder();
         prompt.append("[群聊上下文] 你正在参与群聊「").append(groupName).append("」，你的身份是「").append(currentAgentName).append("」。\n");
+
+        // 列出群成员
+        if (!otherMemberNames.isEmpty()) {
+            prompt.append("群聊成员：你(").append(currentAgentName).append(")、");
+            prompt.append(String.join("、", otherMemberNames)).append("\n");
+        }
+
         prompt.append("以下是最近的群聊记录，请结合上下文理解并回复最新消息：\n");
         prompt.append("---\n");
 
@@ -289,7 +305,18 @@ public class LocalChatGroupService implements ChatGroupService {
 
         prompt.append("---\n");
         prompt.append("最新消息 - 用户: ").append(content).append("\n");
-        prompt.append("请以「").append(currentAgentName).append("」的身份回复。");
+        prompt.append("请以「").append(currentAgentName).append("」的身份回复。\n");
+
+        // 如果群组开启了自动讨论，告知agent可以@其他成员
+        if (group != null && group.isAutoDiscussion() && !otherMemberNames.isEmpty()) {
+            prompt.append("【重要】如果你想让其他成员回应你，请在回复中使用 @成员名称。");
+            prompt.append("只有被你@的成员才会回应。可用的成员：");
+            for (int i = 0; i < otherMemberNames.size(); i++) {
+                if (i > 0) prompt.append("、");
+                prompt.append("@").append(otherMemberNames.get(i));
+            }
+            prompt.append("\n");
+        }
 
         return prompt.toString();
     }
@@ -441,11 +468,12 @@ public class LocalChatGroupService implements ChatGroupService {
         String finalContent = null;
         if (buffer != null && !buffer.isEmpty()) {
             finalContent = buffer.toString();
-            StoredCliAgent agent = cliAgentStore.findById(agentId).orElse(null);
-            String agentName = agent != null ? agent.getName() : agentId;
 
-            // 更新最后一条该agent的占位消息内容
-            updateLastAgentMessage(groupId, agentId, finalContent);
+            // 解析agent输出中的@mention
+            List<String> mentionedIds = parseAgentMentions(groupId, agentId, finalContent);
+
+            // 更新最后一条该agent的占位消息内容和@提及信息
+            updateLastAgentMessage(groupId, agentId, finalContent, mentionedIds);
         }
 
         // 推送完成信号到群聊topic
@@ -460,8 +488,10 @@ public class LocalChatGroupService implements ChatGroupService {
         if (finalContent != null && !finalContent.isBlank()) {
             final String completedAgentId = agentId;
             final String completedContent = finalContent;
+            // 解析agent输出中的@mention用于路由下一轮讨论
+            final List<String> mentionedIds = parseAgentMentions(groupId, agentId, finalContent);
             autoDiscussionScheduler.schedule(
-                () -> triggerAutoDiscussion(groupId, completedAgentId, completedContent),
+                () -> triggerAutoDiscussion(groupId, completedAgentId, completedContent, mentionedIds),
                 AUTO_DISCUSSION_DELAY_MS, TimeUnit.MILLISECONDS
             );
         }
@@ -476,7 +506,7 @@ public class LocalChatGroupService implements ChatGroupService {
 
         StringBuilder buffer = agentGroupOutputBuffers.remove(agentId);
         if (buffer != null && !buffer.isEmpty()) {
-            updateLastAgentMessage(groupId, agentId, buffer.toString());
+            updateLastAgentMessage(groupId, agentId, buffer.toString(), null);
         }
 
         StoredCliAgent agent = cliAgentStore.findById(agentId).orElse(null);
@@ -488,9 +518,9 @@ public class LocalChatGroupService implements ChatGroupService {
     }
 
     /**
-     * 更新该agent在群聊中的最后一条消息内容
+     * 更新该agent在群聊中的最后一条消息内容（含@提及信息）
      */
-    private void updateLastAgentMessage(String groupId, String agentId, String content) {
+    private void updateLastAgentMessage(String groupId, String agentId, String content, List<String> mentionedAgentIds) {
         List<StoredChatGroupMessage> groupMessages = chatGroupMessageStore.find(
             msg -> groupId.equals(msg.getGroupId()) &&
                    "agent".equals(msg.getSenderType()) &&
@@ -501,6 +531,9 @@ public class LocalChatGroupService implements ChatGroupService {
                 Comparator.nullsLast(Comparator.naturalOrder())));
             StoredChatGroupMessage lastMsg = groupMessages.get(groupMessages.size() - 1);
             lastMsg.setContent(content);
+            if (mentionedAgentIds != null && !mentionedAgentIds.isEmpty()) {
+                lastMsg.setMentionedAgentIds(new ArrayList<>(mentionedAgentIds));
+            }
             chatGroupMessageStore.save(lastMsg.getId(), lastMsg);
         }
     }
@@ -567,9 +600,13 @@ public class LocalChatGroupService implements ChatGroupService {
     }
 
     /**
-     * 触发自动讨论：当一个agent完成回复后，自动触发下一个agent进行回复
+     * 触发自动讨论：当一个agent完成回复后，只触发其@提及的agent进行回复。
+     *
+     * 路由策略（纯@驱动）：
+     * - 如果agent在输出中@了特定agent → 只触发被@的agent
+     * - 如果没有@任何agent → 讨论链自然结束（不自动轮流）
      */
-    private void triggerAutoDiscussion(String groupId, String completedAgentId, String completedContent) {
+    private void triggerAutoDiscussion(String groupId, String completedAgentId, String completedContent, List<String> mentionedAgentIds) {
         // 检查自动讨论是否仍然活跃
         if (!Boolean.TRUE.equals(autoDiscussionActive.get(groupId))) {
             log.debug("Auto-discussion not active for group {}, skipping", groupId);
@@ -601,19 +638,33 @@ public class LocalChatGroupService implements ChatGroupService {
             return;
         }
 
-        // 选择下一个要发言的agent（轮流机制：选择不是刚完成的那个）
-        List<String> nextAgentIds = group.getAgentIds().stream()
-            .filter(id -> !id.equals(completedAgentId))
-            .collect(Collectors.toList());
-
-        if (nextAgentIds.isEmpty()) {
-            log.debug("No other agents available in group {}", groupId);
+        // 纯@驱动：只有被@的agent才会响应
+        if (mentionedAgentIds == null || mentionedAgentIds.isEmpty()) {
+            // 没有@任何agent，讨论链自然结束
+            StoredCliAgent completedAgent = cliAgentStore.findById(completedAgentId).orElse(null);
+            String completedName = completedAgent != null ? completedAgent.getName() : completedAgentId;
+            log.info("Auto-discussion: {} did not @mention anyone, discussion chain paused", completedName);
+            addSystemMessage(groupId, "💬 " + completedName + " 没有@其他成员，讨论暂停。你可以发送新消息继续讨论");
             autoDiscussionActive.put(groupId, false);
             pushAutoDiscussionStatus(groupId, false);
             return;
         }
 
-        // 检查下一个agent是否可用
+        // 过滤：必须在群组内，排除自己@自己
+        List<String> nextAgentIds = mentionedAgentIds.stream()
+            .filter(id -> group.getAgentIds().contains(id))
+            .filter(id -> !id.equals(completedAgentId))
+            .distinct()
+            .collect(Collectors.toList());
+
+        if (nextAgentIds.isEmpty()) {
+            log.debug("No valid target agents from @mentions in group {}", groupId);
+            autoDiscussionActive.put(groupId, false);
+            pushAutoDiscussionStatus(groupId, false);
+            return;
+        }
+
+        // 检查目标agent是否可用（RUNNING状态）
         List<String> availableAgentIds = nextAgentIds.stream()
             .filter(id -> {
                 StoredCliAgent a = cliAgentStore.findById(id).orElse(null);
@@ -624,7 +675,7 @@ public class LocalChatGroupService implements ChatGroupService {
         if (availableAgentIds.isEmpty()) {
             log.info("No available agents to continue auto-discussion in group {}", groupId);
             autoDiscussionActive.put(groupId, false);
-            addSystemMessage(groupId, "⚠️ 没有可用的Agent继续讨论");
+            addSystemMessage(groupId, "⚠️ 被@的Agent未运行，讨论暂停");
             pushAutoDiscussionStatus(groupId, false);
             return;
         }
@@ -634,18 +685,56 @@ public class LocalChatGroupService implements ChatGroupService {
 
         StoredCliAgent completedAgent = cliAgentStore.findById(completedAgentId).orElse(null);
         String completedAgentName = completedAgent != null ? completedAgent.getName() : completedAgentId;
-        log.info("Auto-discussion round {} in group {}: {} agents will respond to {}",
-            currentRound + 1, groupId, availableAgentIds.size(), completedAgentName);
+        String mentionNames = availableAgentIds.stream()
+            .map(id -> cliAgentStore.findById(id).map(StoredCliAgent::getName).orElse(id))
+            .collect(Collectors.joining(", "));
+        log.info("Auto-discussion round {} in group {}: {} @mentioned [{}]",
+            currentRound + 1, groupId, completedAgentName, mentionNames);
 
-        // 触发下一轮agent回复（所有其他可用agent都参与讨论）
+        // 触发被@的agent回复
         for (String nextAgentId : availableAgentIds) {
             sendToAgent(groupId, nextAgentId, completedContent, false);
         }
     }
 
     /**
+     * 从agent输出中解析@mention（@AgentName形式）。
+     * 将检测到的agent名称映射回agent ID。
+     */
+    private List<String> parseAgentMentions(String groupId, String senderAgentId, String content) {
+        if (content == null || content.isBlank()) return new ArrayList<>();
+
+        StoredChatGroup group = chatGroupStore.findById(groupId).orElse(null);
+        if (group == null || group.getAgentIds() == null) return new ArrayList<>();
+
+        // 构建agentName→agentId映射（排除发送者自己）
+        Map<String, String> nameToId = new HashMap<>();
+        for (String aid : group.getAgentIds()) {
+            if (aid.equals(senderAgentId)) continue;
+            cliAgentStore.findById(aid).ifPresent(agent ->
+                nameToId.put(agent.getName(), agent.getId()));
+        }
+
+        if (nameToId.isEmpty()) return new ArrayList<>();
+
+        // 在内容中查找 @AgentName 模式
+        List<String> mentioned = new ArrayList<>();
+        for (Map.Entry<String, String> entry : nameToId.entrySet()) {
+            String name = entry.getKey();
+            String id = entry.getValue();
+            // 匹配 @AgentName（后面跟空格、标点、换行或末尾）
+            if (content.contains("@" + name)) {
+                mentioned.add(id);
+            }
+        }
+
+        return mentioned;
+    }
+
+    /**
      * 构建自动讨论模式下的Agent Prompt
-     * 与普通的buildAgentPrompt不同，这里强调agent应该回应其他agent的观点
+     * 与普通的buildAgentPrompt不同，这里强调agent应该回应其他agent的观点，
+     * 并告知其如何@mention群内其他agent
      */
     private String buildAutoDiscussionPrompt(String groupId, String currentAgentId) {
         // 获取最近的群聊消息作为上下文（排除空内容的占位消息）
@@ -660,15 +749,24 @@ public class LocalChatGroupService implements ChatGroupService {
         int startIndex = Math.max(0, recentMessages.size() - contextLimit);
         List<StoredChatGroupMessage> contextMessages = recentMessages.subList(startIndex, recentMessages.size());
 
-        // 获取群组名称
-        String groupName = chatGroupStore.findById(groupId)
-            .map(StoredChatGroup::getName)
-            .orElse("群聊");
+        // 获取群组信息
+        StoredChatGroup group = chatGroupStore.findById(groupId).orElse(null);
+        String groupName = group != null ? group.getName() : "群聊";
 
         // 获取当前agent名称
         String currentAgentName = cliAgentStore.findById(currentAgentId)
             .map(StoredCliAgent::getName)
             .orElse(currentAgentId);
+
+        // 构建群成员列表（排除当前agent）
+        List<String> otherMemberNames = new ArrayList<>();
+        if (group != null && group.getAgentIds() != null) {
+            for (String aid : group.getAgentIds()) {
+                if (!aid.equals(currentAgentId)) {
+                    cliAgentStore.findById(aid).ifPresent(a -> otherMemberNames.add(a.getName()));
+                }
+            }
+        }
 
         // 找到最后一条agent消息作为讨论焦点
         StoredChatGroupMessage lastAgentMsg = null;
@@ -683,6 +781,14 @@ public class LocalChatGroupService implements ChatGroupService {
         StringBuilder prompt = new StringBuilder();
         prompt.append("[群聊讨论模式] 你正在参与群聊「").append(groupName).append("」的讨论，你的身份是「").append(currentAgentName).append("」。\n");
         prompt.append("这是一场多Agent讨论/辩论，你需要认真思考并回应其他参与者的观点。\n\n");
+
+        // 列出所有群成员
+        prompt.append("群聊成员：你(").append(currentAgentName).append(")");
+        if (!otherMemberNames.isEmpty()) {
+            prompt.append("、").append(String.join("、", otherMemberNames));
+        }
+        prompt.append("\n\n");
+
         prompt.append("以下是最近的群聊记录：\n");
         prompt.append("---\n");
 
@@ -713,6 +819,22 @@ public class LocalChatGroupService implements ChatGroupService {
         prompt.append("2. 你可以赞同、反驳、补充或提出新的角度\n");
         prompt.append("3. 保持讨论的深度和质量，避免简单重复他人观点\n");
         prompt.append("4. 回复要简洁有力，控制在合理的篇幅内\n");
+        if (!otherMemberNames.isEmpty()) {
+            prompt.append("5. 【重要】你必须在回复中使用 @成员名称 来指定你希望谁来回应你。");
+            prompt.append("只有被你@的成员才会看到并回应你的消息。\n");
+            prompt.append("   可用的成员：");
+            for (int i = 0; i < otherMemberNames.size(); i++) {
+                if (i > 0) prompt.append("、");
+                prompt.append("@").append(otherMemberNames.get(i));
+            }
+            prompt.append("\n");
+            prompt.append("   你可以@一个或多个成员。例如在回复末尾加上 @").append(otherMemberNames.get(0));
+            if (otherMemberNames.size() > 1) {
+                prompt.append(" 或同时 @").append(otherMemberNames.get(0)).append(" @").append(otherMemberNames.get(1));
+            }
+            prompt.append("\n");
+            prompt.append("   如果你认为讨论已经充分或达成共识，可以不@任何人，讨论将自然结束。\n");
+        }
 
         return prompt.toString();
     }
