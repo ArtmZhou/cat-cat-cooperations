@@ -59,6 +59,10 @@ public class LocalChatGroupService implements ChatGroupService {
     // 追踪每个群聊中最后一个完成的agentId：groupId → agentId
     private final Map<String, String> lastCompletedAgent = new ConcurrentHashMap<>();
 
+    // 累积待处理的@mention：groupId → 被@的agentId集合
+    // 当多个agent并发处理时，先完成的agent的@mention被暂存，等所有agent完成后统一触发
+    private final Map<String, Set<String>> pendingMentionedAgentIds = new ConcurrentHashMap<>();
+
     // 自动讨论的调度线程池
     private final ScheduledExecutorService autoDiscussionScheduler =
         Executors.newScheduledThreadPool(2, r -> {
@@ -466,11 +470,12 @@ public class LocalChatGroupService implements ChatGroupService {
         agentGroupContext.remove(agentId);
 
         String finalContent = null;
+        List<String> mentionedIds = new ArrayList<>();
         if (buffer != null && !buffer.isEmpty()) {
             finalContent = buffer.toString();
 
-            // 解析agent输出中的@mention
-            List<String> mentionedIds = parseAgentMentions(groupId, agentId, finalContent);
+            // 解析agent输出中的@mention（仅解析一次，复用于消息存储和自动讨论路由）
+            mentionedIds = parseAgentMentions(groupId, agentId, finalContent);
 
             // 更新最后一条该agent的占位消息内容和@提及信息
             updateLastAgentMessage(groupId, agentId, finalContent, mentionedIds);
@@ -488,10 +493,9 @@ public class LocalChatGroupService implements ChatGroupService {
         if (finalContent != null && !finalContent.isBlank()) {
             final String completedAgentId = agentId;
             final String completedContent = finalContent;
-            // 解析agent输出中的@mention用于路由下一轮讨论
-            final List<String> mentionedIds = parseAgentMentions(groupId, agentId, finalContent);
+            final List<String> finalMentionedIds = mentionedIds;
             autoDiscussionScheduler.schedule(
-                () -> triggerAutoDiscussion(groupId, completedAgentId, completedContent, mentionedIds),
+                () -> triggerAutoDiscussion(groupId, completedAgentId, completedContent, finalMentionedIds),
                 AUTO_DISCUSSION_DELAY_MS, TimeUnit.MILLISECONDS
             );
         }
@@ -560,6 +564,13 @@ public class LocalChatGroupService implements ChatGroupService {
      */
     private void sendToAgent(String groupId, String agentId, String content, boolean isUserMessage) {
         try {
+            // 安全检查：不要向正在群聊中处理消息的agent发送新消息
+            // 这能防止output buffer被覆盖导致的消息丢失
+            if (agentGroupContext.containsKey(agentId)) {
+                log.warn("Agent {} is already processing in group context, skipping to prevent message overlap", agentId);
+                return;
+            }
+
             StoredCliAgent agent = cliAgentStore.findById(agentId).orElse(null);
             if (agent == null) {
                 log.warn("Agent not found: {}", agentId);
@@ -602,6 +613,15 @@ public class LocalChatGroupService implements ChatGroupService {
     /**
      * 触发自动讨论：当一个agent完成回复后，只触发其@提及的agent进行回复。
      *
+     * 并发安全策略：
+     * 当多个agent同时处理（如用户广播或@多人），它们以不同速度完成。
+     * 先完成的agent的@mention会被暂存到pendingMentionedAgentIds中，
+     * 只有当所有并发agent都完成后，才统一触发下一批被@的agent。
+     * 这确保：
+     * 1. 不会丢失任何agent的@mention
+     * 2. 下一批agent看到的上下文包含本批所有agent的完整回复
+     * 3. 不会向正在处理中的agent发送新消息
+     *
      * 路由策略（纯@驱动）：
      * - 如果agent在输出中@了特定agent → 只触发被@的agent
      * - 如果没有@任何agent → 讨论链自然结束（不自动轮流）
@@ -625,35 +645,45 @@ public class LocalChatGroupService implements ChatGroupService {
         if (currentRound >= group.getMaxAutoRounds()) {
             log.info("Auto-discussion reached max rounds ({}) for group {}", group.getMaxAutoRounds(), groupId);
             autoDiscussionActive.put(groupId, false);
+            pendingMentionedAgentIds.remove(groupId);
             addSystemMessage(groupId, "🔄 自动讨论已达到最大轮数 (" + group.getMaxAutoRounds() + " 轮)，讨论结束");
             pushAutoDiscussionStatus(groupId, false);
             return;
         }
 
-        // 检查是否还有其他agent正在执行中（等待所有agent完成当前轮）
+        // 将本次@mention累积到pendingMentionedAgentIds（不丢失任何并发agent的@mention）
+        if (mentionedAgentIds != null && !mentionedAgentIds.isEmpty()) {
+            pendingMentionedAgentIds.computeIfAbsent(groupId, k -> ConcurrentHashMap.newKeySet())
+                .addAll(mentionedAgentIds);
+            log.debug("Accumulated @mentions for group {}: {}", groupId, mentionedAgentIds);
+        }
+
+        // 检查是否还有其他agent正在执行中（等待所有agent完成当前批次）
         boolean anyAgentExecuting = group.getAgentIds().stream()
             .anyMatch(agentGroupContext::containsKey);
         if (anyAgentExecuting) {
-            log.debug("Other agents still executing in group {}, waiting for all to complete", groupId);
+            log.debug("Other agents still executing in group {}, @mentions saved and waiting for batch to complete", groupId);
             return;
         }
 
-        // 纯@驱动：只有被@的agent才会响应
-        if (mentionedAgentIds == null || mentionedAgentIds.isEmpty()) {
-            // 没有@任何agent，讨论链自然结束
+        // 所有并发agent都完成了 → 收集本批次所有累积的@mention
+        Set<String> allPendingMentions = pendingMentionedAgentIds.remove(groupId);
+
+        // 合并：累积的 + 当前的（当前的已在上面加入，这里remove获取全部）
+        if (allPendingMentions == null || allPendingMentions.isEmpty()) {
+            // 没有任何agent@过任何人，讨论链自然结束
             StoredCliAgent completedAgent = cliAgentStore.findById(completedAgentId).orElse(null);
             String completedName = completedAgent != null ? completedAgent.getName() : completedAgentId;
-            log.info("Auto-discussion: {} did not @mention anyone, discussion chain paused", completedName);
+            log.info("Auto-discussion: no agent @mentioned anyone in this batch, discussion chain paused");
             addSystemMessage(groupId, "💬 " + completedName + " 没有@其他成员，讨论暂停。你可以发送新消息继续讨论");
             autoDiscussionActive.put(groupId, false);
             pushAutoDiscussionStatus(groupId, false);
             return;
         }
 
-        // 过滤：必须在群组内，排除自己@自己
-        List<String> nextAgentIds = mentionedAgentIds.stream()
+        // 过滤：必须在群组内
+        List<String> nextAgentIds = allPendingMentions.stream()
             .filter(id -> group.getAgentIds().contains(id))
-            .filter(id -> !id.equals(completedAgentId))
             .distinct()
             .collect(Collectors.toList());
 
@@ -683,13 +713,11 @@ public class LocalChatGroupService implements ChatGroupService {
         // 递增轮数
         autoDiscussionRoundCounter.put(groupId, currentRound + 1);
 
-        StoredCliAgent completedAgent = cliAgentStore.findById(completedAgentId).orElse(null);
-        String completedAgentName = completedAgent != null ? completedAgent.getName() : completedAgentId;
         String mentionNames = availableAgentIds.stream()
             .map(id -> cliAgentStore.findById(id).map(StoredCliAgent::getName).orElse(id))
             .collect(Collectors.joining(", "));
-        log.info("Auto-discussion round {} in group {}: {} @mentioned [{}]",
-            currentRound + 1, groupId, completedAgentName, mentionNames);
+        log.info("Auto-discussion round {} in group {}: triggering [{}] (accumulated from batch)",
+            currentRound + 1, groupId, mentionNames);
 
         // 触发被@的agent回复
         for (String nextAgentId : availableAgentIds) {
@@ -853,6 +881,7 @@ public class LocalChatGroupService implements ChatGroupService {
         autoDiscussionActive.remove(groupId);
         autoDiscussionRoundCounter.remove(groupId);
         lastCompletedAgent.remove(groupId);
+        pendingMentionedAgentIds.remove(groupId);
     }
 
     /**
