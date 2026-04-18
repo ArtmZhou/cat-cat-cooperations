@@ -651,7 +651,9 @@ public class LocalChatGroupService implements ChatGroupService {
             return;
         }
 
-        // 将本次@mention累积到pendingMentionedAgentIds（不丢失任何并发agent的@mention）
+        // 【并发安全】将本次@mention累积到pendingMentionedAgentIds。
+        // 在并发场景（如广播给3个agent），每个agent以不同速度完成。先完成的agent的@mention
+        // 在此处暂存，等整个批次完成后统一触发。这防止了快速agent的@mention被丢失。
         if (mentionedAgentIds != null && !mentionedAgentIds.isEmpty()) {
             pendingMentionedAgentIds.computeIfAbsent(groupId, k -> ConcurrentHashMap.newKeySet())
                 .addAll(mentionedAgentIds);
@@ -666,10 +668,10 @@ public class LocalChatGroupService implements ChatGroupService {
             return;
         }
 
-        // 所有并发agent都完成了 → 收集本批次所有累积的@mention
+        // 【关键步骤】所有并发agent都完成了 → 排空累积的@mention，统一触发下一批次。
+        // 这确保下一批agent看到的上下文包含上一批次ALL agent的完整回复。
         Set<String> allPendingMentions = pendingMentionedAgentIds.remove(groupId);
 
-        // 合并：累积的 + 当前的（当前的已在上面加入，这里remove获取全部）
         if (allPendingMentions == null || allPendingMentions.isEmpty()) {
             // 没有任何agent@过任何人，讨论链自然结束
             StoredCliAgent completedAgent = cliAgentStore.findById(completedAgentId).orElse(null);
