@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -50,6 +51,32 @@ public class ChatGroupController {
         List<String> agentIds = (List<String>) request.get("agentIds");
 
         ChatGroupInfo group = chatGroupService.updateGroup(groupId, name, description, agentIds);
+
+        // 更新自动讨论设置
+        if (request.containsKey("autoDiscussion") || request.containsKey("maxAutoRounds")) {
+            Boolean autoDiscussion = null;
+            Integer maxAutoRoundsVal = null;
+            try {
+                Object autoDiscObj = request.get("autoDiscussion");
+                if (autoDiscObj instanceof Boolean b) {
+                    autoDiscussion = b;
+                } else if (autoDiscObj != null) {
+                    autoDiscussion = Boolean.parseBoolean(autoDiscObj.toString());
+                }
+                Object maxRoundsObj = request.get("maxAutoRounds");
+                if (maxRoundsObj instanceof Number n) {
+                    maxAutoRoundsVal = n.intValue();
+                } else if (maxRoundsObj != null) {
+                    maxAutoRoundsVal = Integer.parseInt(maxRoundsObj.toString());
+                }
+            } catch (NumberFormatException e) {
+                return ApiResponse.error(400, "maxAutoRounds 必须是有效的数字");
+            }
+            if (autoDiscussion != null || maxAutoRoundsVal != null) {
+                group = chatGroupService.updateAutoDiscussionSettings(groupId, autoDiscussion, maxAutoRoundsVal);
+            }
+        }
+
         return ApiResponse.success(group);
     }
 
@@ -104,5 +131,21 @@ public class ChatGroupController {
     public ApiResponse<Void> clearMessages(@PathVariable String groupId) {
         chatGroupService.clearGroupMessages(groupId);
         return ApiResponse.success();
+    }
+
+    @Operation(summary = "停止自动讨论", description = "中断群组中正在进行的自动讨论")
+    @PostMapping("/{groupId}/auto-discussion/stop")
+    public ApiResponse<Void> stopAutoDiscussion(@PathVariable String groupId) {
+        chatGroupService.stopAutoDiscussion(groupId);
+        return ApiResponse.success();
+    }
+
+    @Operation(summary = "获取自动讨论状态", description = "获取群组中自动讨论是否正在进行")
+    @GetMapping("/{groupId}/auto-discussion/status")
+    public ApiResponse<Map<String, Object>> getAutoDiscussionStatus(@PathVariable String groupId) {
+        boolean running = chatGroupService.isAutoDiscussionRunning(groupId);
+        Map<String, Object> status = new HashMap<>();
+        status.put("running", running);
+        return ApiResponse.success(status);
     }
 }

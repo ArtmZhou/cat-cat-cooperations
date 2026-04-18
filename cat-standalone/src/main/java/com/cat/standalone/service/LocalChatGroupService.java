@@ -15,12 +15,15 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
  * 聊天群组服务实现
  *
- * 支持多Agent群聊，消息广播和@提及功能
+ * 支持多Agent群聊，消息广播、@提及和自动讨论（Agent博弈）功能
  */
 @Slf4j
 @Service
@@ -36,6 +39,7 @@ public class LocalChatGroupService implements ChatGroupService {
     private static final String TOPIC_GROUP = "/topic/chat-group/";
     private static final int MAX_MESSAGES_PER_GROUP = 200;
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
+    private static final int AUTO_DISCUSSION_DELAY_MS = 2000; // 自动讨论间隔延迟
 
     // 追踪agent当前所在的群聊上下文：agentId → groupId
     // 当agent在群聊中收到消息后，其输出会被转发到对应群聊
@@ -43,6 +47,34 @@ public class LocalChatGroupService implements ChatGroupService {
 
     // 追踪每个agent在群聊中的累积输出：agentId → 累积文本
     private final Map<String, StringBuilder> agentGroupOutputBuffers = new ConcurrentHashMap<>();
+
+    // ===== 自动讨论（博弈）相关状态 =====
+
+    // 追踪每个群聊的自动讨论轮数计数：groupId → 当前轮数
+    private final Map<String, Integer> autoDiscussionRoundCounter = new ConcurrentHashMap<>();
+
+    // 追踪每个群聊的自动讨论是否活跃：groupId → boolean
+    private final Map<String, Boolean> autoDiscussionActive = new ConcurrentHashMap<>();
+
+    // 追踪每个群聊中最后一个完成的agentId：groupId → agentId
+    private final Map<String, String> lastCompletedAgent = new ConcurrentHashMap<>();
+
+    // 累积待处理的@mention：groupId → 被@的agentId集合
+    // 当多个agent并发处理时，先完成的agent的@mention被暂存，等所有agent完成后统一触发
+    private final Map<String, Set<String>> pendingMentionedAgentIds = new ConcurrentHashMap<>();
+
+    // 自动讨论的调度线程池
+    private final ScheduledExecutorService autoDiscussionScheduler =
+        Executors.newScheduledThreadPool(2, r -> {
+            Thread t = new Thread(r, "auto-discussion-scheduler");
+            t.setDaemon(true);
+            return t;
+        });
+
+    @jakarta.annotation.PreDestroy
+    public void destroy() {
+        autoDiscussionScheduler.shutdownNow();
+    }
 
     private static String generateId(int length) {
         return UUID.randomUUID().toString().replace("-", "").substring(0, length);
@@ -117,6 +149,9 @@ public class LocalChatGroupService implements ChatGroupService {
 
         boolean isBroadcast = mentionedAgentIds == null || mentionedAgentIds.isEmpty();
 
+        // 用户发送消息时，重置自动讨论状态（用户介入）
+        resetAutoDiscussionState(groupId);
+
         // 保存用户消息
         String msgId = generateId(16);
         StoredChatGroupMessage msg = new StoredChatGroupMessage();
@@ -145,43 +180,17 @@ public class LocalChatGroupService implements ChatGroupService {
                 .collect(Collectors.toList());
         }
 
+        // 如果群组启用了自动讨论模式，初始化自动讨论状态
+        if (group.isAutoDiscussion()) {
+            autoDiscussionActive.put(groupId, true);
+            autoDiscussionRoundCounter.put(groupId, 0);
+            pushAutoDiscussionStatus(groupId, true);
+            log.info("Auto-discussion activated for group {} with max {} rounds", groupId, group.getMaxAutoRounds());
+        }
+
         // 向目标agent发送消息（使用CLI session input）
         for (String agentId : targetAgentIds) {
-            try {
-                StoredCliAgent agent = cliAgentStore.findById(agentId).orElse(null);
-                if (agent == null) {
-                    log.warn("Agent not found: {}", agentId);
-                    continue;
-                }
-
-                if (!"RUNNING".equals(agent.getStatus())) {
-                    log.warn("Agent {} is not running (status: {}), skipping", agentId, agent.getStatus());
-                    // 发送一条系统提示消息
-                    addSystemMessage(groupId, "⚠️ " + agent.getName() + " 未运行，消息未送达");
-                    continue;
-                }
-
-                // 构建发送给agent的消息（包含群聊上下文）
-                String agentPrompt = buildAgentPrompt(groupId, content, agentId);
-                boolean sent = cliSessionService.sendInput(agentId, agentPrompt);
-
-                if (sent) {
-                    log.info("Sent group message to agent {}: {}", agentId, content.substring(0, Math.min(50, content.length())));
-                    // 注册agent的群聊上下文（用于输出转发）
-                    agentGroupContext.put(agentId, groupId);
-                    agentGroupOutputBuffers.put(agentId, new StringBuilder());
-                    // 预添加一条agent空消息（用于流式更新）
-                    addAgentPlaceholderMessage(groupId, agentId, agent.getName());
-                } else {
-                    log.warn("Failed to send message to agent {}", agentId);
-                    addSystemMessage(groupId, "❌ 发送给 " + agent.getName() + " 失败");
-                }
-            } catch (Exception e) {
-                log.error("Error sending message to agent {}: {}", agentId, e.getMessage());
-                StoredCliAgent agent = cliAgentStore.findById(agentId).orElse(null);
-                String agentName = agent != null ? agent.getName() : agentId;
-                addSystemMessage(groupId, "❌ 发送给 " + agentName + " 出错: " + e.getMessage());
-            }
+            sendToAgent(groupId, agentId, content, true);
         }
 
         // 限制消息数量
@@ -250,18 +259,34 @@ public class LocalChatGroupService implements ChatGroupService {
             return content;
         }
 
-        // 获取群组名称
-        String groupName = chatGroupStore.findById(groupId)
-            .map(StoredChatGroup::getName)
-            .orElse("群聊");
+        // 获取群组信息
+        StoredChatGroup group = chatGroupStore.findById(groupId).orElse(null);
+        String groupName = group != null ? group.getName() : "群聊";
 
         // 获取当前agent名称
         String currentAgentName = cliAgentStore.findById(currentAgentId)
             .map(StoredCliAgent::getName)
             .orElse(currentAgentId);
 
+        // 构建群成员列表（排除当前agent）
+        List<String> otherMemberNames = new ArrayList<>();
+        if (group != null && group.getAgentIds() != null) {
+            for (String aid : group.getAgentIds()) {
+                if (!aid.equals(currentAgentId)) {
+                    cliAgentStore.findById(aid).ifPresent(a -> otherMemberNames.add(a.getName()));
+                }
+            }
+        }
+
         StringBuilder prompt = new StringBuilder();
         prompt.append("[群聊上下文] 你正在参与群聊「").append(groupName).append("」，你的身份是「").append(currentAgentName).append("」。\n");
+
+        // 列出群成员
+        if (!otherMemberNames.isEmpty()) {
+            prompt.append("群聊成员：你(").append(currentAgentName).append(")、");
+            prompt.append(String.join("、", otherMemberNames)).append("\n");
+        }
+
         prompt.append("以下是最近的群聊记录，请结合上下文理解并回复最新消息：\n");
         prompt.append("---\n");
 
@@ -284,7 +309,18 @@ public class LocalChatGroupService implements ChatGroupService {
 
         prompt.append("---\n");
         prompt.append("最新消息 - 用户: ").append(content).append("\n");
-        prompt.append("请以「").append(currentAgentName).append("」的身份回复。");
+        prompt.append("请以「").append(currentAgentName).append("」的身份回复。\n");
+
+        // 如果群组开启了自动讨论，告知agent可以@其他成员
+        if (group != null && group.isAutoDiscussion() && !otherMemberNames.isEmpty()) {
+            prompt.append("【重要】如果你想让其他成员回应你，请在回复中使用 @成员名称。");
+            prompt.append("只有被你@的成员才会回应。可用的成员：");
+            for (int i = 0; i < otherMemberNames.size(); i++) {
+                if (i > 0) prompt.append("、");
+                prompt.append("@").append(otherMemberNames.get(i));
+            }
+            prompt.append("\n");
+        }
 
         return prompt.toString();
     }
@@ -364,6 +400,9 @@ public class LocalChatGroupService implements ChatGroupService {
             group.getDescription(),
             group.getAgentIds(),
             agentBriefs,
+            group.isAutoDiscussion(),
+            group.getMaxAutoRounds(),
+            Boolean.TRUE.equals(autoDiscussionActive.get(group.getId())),
             group.getCreatedAt() != null ? group.getCreatedAt().format(FORMATTER) : null,
             group.getUpdatedAt() != null ? group.getUpdatedAt().format(FORMATTER) : null
         );
@@ -421,7 +460,7 @@ public class LocalChatGroupService implements ChatGroupService {
     }
 
     /**
-     * 处理agent输出完成信号，保存最终消息
+     * 处理agent输出完成信号，保存最终消息，并触发自动讨论链
      */
     public void handleAgentDone(String agentId) {
         String groupId = agentGroupContext.get(agentId);
@@ -430,18 +469,36 @@ public class LocalChatGroupService implements ChatGroupService {
         StringBuilder buffer = agentGroupOutputBuffers.remove(agentId);
         agentGroupContext.remove(agentId);
 
+        String finalContent = null;
+        List<String> mentionedIds = new ArrayList<>();
         if (buffer != null && !buffer.isEmpty()) {
-            StoredCliAgent agent = cliAgentStore.findById(agentId).orElse(null);
-            String agentName = agent != null ? agent.getName() : agentId;
+            finalContent = buffer.toString();
 
-            // 更新最后一条该agent的占位消息内容
-            updateLastAgentMessage(groupId, agentId, buffer.toString());
+            // 解析agent输出中的@mention（仅解析一次，复用于消息存储和自动讨论路由）
+            mentionedIds = parseAgentMentions(groupId, agentId, finalContent);
+
+            // 更新最后一条该agent的占位消息内容和@提及信息
+            updateLastAgentMessage(groupId, agentId, finalContent, mentionedIds);
         }
 
         // 推送完成信号到群聊topic
         StoredCliAgent agent = cliAgentStore.findById(agentId).orElse(null);
         String agentName = agent != null ? agent.getName() : agentId;
         pushGroupAgentOutput(groupId, agentId, agentName, "done", "");
+
+        // 记录最后完成的agent
+        lastCompletedAgent.put(groupId, agentId);
+
+        // 检查是否需要触发自动讨论（异步延迟执行，避免阻塞当前线程）
+        if (finalContent != null && !finalContent.isBlank()) {
+            final String completedAgentId = agentId;
+            final String completedContent = finalContent;
+            final List<String> finalMentionedIds = mentionedIds;
+            autoDiscussionScheduler.schedule(
+                () -> triggerAutoDiscussion(groupId, completedAgentId, completedContent, finalMentionedIds),
+                AUTO_DISCUSSION_DELAY_MS, TimeUnit.MILLISECONDS
+            );
+        }
     }
 
     /**
@@ -453,7 +510,7 @@ public class LocalChatGroupService implements ChatGroupService {
 
         StringBuilder buffer = agentGroupOutputBuffers.remove(agentId);
         if (buffer != null && !buffer.isEmpty()) {
-            updateLastAgentMessage(groupId, agentId, buffer.toString());
+            updateLastAgentMessage(groupId, agentId, buffer.toString(), null);
         }
 
         StoredCliAgent agent = cliAgentStore.findById(agentId).orElse(null);
@@ -465,9 +522,9 @@ public class LocalChatGroupService implements ChatGroupService {
     }
 
     /**
-     * 更新该agent在群聊中的最后一条消息内容
+     * 更新该agent在群聊中的最后一条消息内容（含@提及信息）
      */
-    private void updateLastAgentMessage(String groupId, String agentId, String content) {
+    private void updateLastAgentMessage(String groupId, String agentId, String content, List<String> mentionedAgentIds) {
         List<StoredChatGroupMessage> groupMessages = chatGroupMessageStore.find(
             msg -> groupId.equals(msg.getGroupId()) &&
                    "agent".equals(msg.getSenderType()) &&
@@ -478,6 +535,9 @@ public class LocalChatGroupService implements ChatGroupService {
                 Comparator.nullsLast(Comparator.naturalOrder())));
             StoredChatGroupMessage lastMsg = groupMessages.get(groupMessages.size() - 1);
             lastMsg.setContent(content);
+            if (mentionedAgentIds != null && !mentionedAgentIds.isEmpty()) {
+                lastMsg.setMentionedAgentIds(new ArrayList<>(mentionedAgentIds));
+            }
             chatGroupMessageStore.save(lastMsg.getId(), lastMsg);
         }
     }
@@ -495,5 +555,389 @@ public class LocalChatGroupService implements ChatGroupService {
         } catch (Exception e) {
             log.error("Failed to push group agent output to {}: {}", destination, e.getMessage());
         }
+    }
+
+    // ===== 自动讨论（Agent博弈）功能 =====
+
+    /**
+     * 向指定agent发送群聊消息（抽取的通用方法）
+     */
+    private void sendToAgent(String groupId, String agentId, String content, boolean isUserMessage) {
+        try {
+            // 安全检查：不要向正在群聊中处理消息的agent发送新消息
+            // 这能防止output buffer被覆盖导致的消息丢失
+            if (agentGroupContext.containsKey(agentId)) {
+                log.warn("Agent {} is already processing in group context, skipping to prevent message overlap", agentId);
+                return;
+            }
+
+            StoredCliAgent agent = cliAgentStore.findById(agentId).orElse(null);
+            if (agent == null) {
+                log.warn("Agent not found: {}", agentId);
+                return;
+            }
+
+            if (!"RUNNING".equals(agent.getStatus())) {
+                log.warn("Agent {} is not running (status: {}), skipping", agentId, agent.getStatus());
+                addSystemMessage(groupId, "⚠️ " + agent.getName() + " 未运行，消息未送达");
+                return;
+            }
+
+            // 构建发送给agent的消息（包含群聊上下文）
+            String agentPrompt = isUserMessage
+                ? buildAgentPrompt(groupId, content, agentId)
+                : buildAutoDiscussionPrompt(groupId, agentId);
+
+            boolean sent = cliSessionService.sendInput(agentId, agentPrompt);
+
+            if (sent) {
+                String logContent = content != null ? content.substring(0, Math.min(50, content.length())) : "[auto-discussion]";
+                log.info("Sent group message to agent {}: {}", agentId, logContent);
+                // 注册agent的群聊上下文（用于输出转发）
+                agentGroupContext.put(agentId, groupId);
+                agentGroupOutputBuffers.put(agentId, new StringBuilder());
+                // 预添加一条agent空消息（用于流式更新）
+                addAgentPlaceholderMessage(groupId, agentId, agent.getName());
+            } else {
+                log.warn("Failed to send message to agent {}", agentId);
+                addSystemMessage(groupId, "❌ 发送给 " + agent.getName() + " 失败");
+            }
+        } catch (Exception e) {
+            log.error("Error sending message to agent {}: {}", agentId, e.getMessage());
+            StoredCliAgent agent = cliAgentStore.findById(agentId).orElse(null);
+            String agentName = agent != null ? agent.getName() : agentId;
+            addSystemMessage(groupId, "❌ 发送给 " + agentName + " 出错: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 触发自动讨论：当一个agent完成回复后，只触发其@提及的agent进行回复。
+     *
+     * 并发安全策略：
+     * 当多个agent同时处理（如用户广播或@多人），它们以不同速度完成。
+     * 先完成的agent的@mention会被暂存到pendingMentionedAgentIds中，
+     * 只有当所有并发agent都完成后，才统一触发下一批被@的agent。
+     * 这确保：
+     * 1. 不会丢失任何agent的@mention
+     * 2. 下一批agent看到的上下文包含本批所有agent的完整回复
+     * 3. 不会向正在处理中的agent发送新消息
+     *
+     * 路由策略（纯@驱动）：
+     * - 如果agent在输出中@了特定agent → 只触发被@的agent
+     * - 如果没有@任何agent → 讨论链自然结束（不自动轮流）
+     */
+    private void triggerAutoDiscussion(String groupId, String completedAgentId, String completedContent, List<String> mentionedAgentIds) {
+        // 检查自动讨论是否仍然活跃
+        if (!Boolean.TRUE.equals(autoDiscussionActive.get(groupId))) {
+            log.debug("Auto-discussion not active for group {}, skipping", groupId);
+            return;
+        }
+
+        // 检查群组是否存在且开启了自动讨论
+        StoredChatGroup group = chatGroupStore.findById(groupId).orElse(null);
+        if (group == null || !group.isAutoDiscussion()) {
+            log.debug("Group {} not found or auto-discussion disabled", groupId);
+            return;
+        }
+
+        // 检查轮数限制
+        int currentRound = autoDiscussionRoundCounter.getOrDefault(groupId, 0);
+        if (currentRound >= group.getMaxAutoRounds()) {
+            log.info("Auto-discussion reached max rounds ({}) for group {}", group.getMaxAutoRounds(), groupId);
+            autoDiscussionActive.put(groupId, false);
+            pendingMentionedAgentIds.remove(groupId);
+            addSystemMessage(groupId, "🔄 自动讨论已达到最大轮数 (" + group.getMaxAutoRounds() + " 轮)，讨论结束");
+            pushAutoDiscussionStatus(groupId, false);
+            return;
+        }
+
+        // 【并发安全】将本次@mention累积到pendingMentionedAgentIds。
+        // 在并发场景（如广播给3个agent），每个agent以不同速度完成。先完成的agent的@mention
+        // 在此处暂存，等整个批次完成后统一触发。这防止了快速agent的@mention被丢失。
+        if (mentionedAgentIds != null && !mentionedAgentIds.isEmpty()) {
+            pendingMentionedAgentIds.computeIfAbsent(groupId, k -> ConcurrentHashMap.newKeySet())
+                .addAll(mentionedAgentIds);
+            log.debug("Accumulated @mentions for group {}: {}", groupId, mentionedAgentIds);
+        }
+
+        // 检查是否还有其他agent正在执行中（等待所有agent完成当前批次）
+        boolean anyAgentExecuting = group.getAgentIds().stream()
+            .anyMatch(agentGroupContext::containsKey);
+        if (anyAgentExecuting) {
+            log.debug("Other agents still executing in group {}, @mentions saved and waiting for batch to complete", groupId);
+            return;
+        }
+
+        // 【关键步骤】所有并发agent都完成了 → 排空累积的@mention，统一触发下一批次。
+        // 这确保下一批agent看到的上下文包含上一批次ALL agent的完整回复。
+        Set<String> allPendingMentions = pendingMentionedAgentIds.remove(groupId);
+
+        if (allPendingMentions == null || allPendingMentions.isEmpty()) {
+            // 没有任何agent@过任何人，讨论链自然结束
+            StoredCliAgent completedAgent = cliAgentStore.findById(completedAgentId).orElse(null);
+            String completedName = completedAgent != null ? completedAgent.getName() : completedAgentId;
+            log.info("Auto-discussion: no agent @mentioned anyone in this batch, discussion chain paused");
+            addSystemMessage(groupId, "💬 " + completedName + " 没有@其他成员，讨论暂停。你可以发送新消息继续讨论");
+            autoDiscussionActive.put(groupId, false);
+            pushAutoDiscussionStatus(groupId, false);
+            return;
+        }
+
+        // 过滤：必须在群组内
+        List<String> nextAgentIds = allPendingMentions.stream()
+            .filter(id -> group.getAgentIds().contains(id))
+            .distinct()
+            .collect(Collectors.toList());
+
+        if (nextAgentIds.isEmpty()) {
+            log.debug("No valid target agents from @mentions in group {}", groupId);
+            autoDiscussionActive.put(groupId, false);
+            pushAutoDiscussionStatus(groupId, false);
+            return;
+        }
+
+        // 检查目标agent是否可用（RUNNING状态）
+        List<String> availableAgentIds = nextAgentIds.stream()
+            .filter(id -> {
+                StoredCliAgent a = cliAgentStore.findById(id).orElse(null);
+                return a != null && "RUNNING".equals(a.getStatus());
+            })
+            .collect(Collectors.toList());
+
+        if (availableAgentIds.isEmpty()) {
+            log.info("No available agents to continue auto-discussion in group {}", groupId);
+            autoDiscussionActive.put(groupId, false);
+            addSystemMessage(groupId, "⚠️ 被@的Agent未运行，讨论暂停");
+            pushAutoDiscussionStatus(groupId, false);
+            return;
+        }
+
+        // 递增轮数
+        autoDiscussionRoundCounter.put(groupId, currentRound + 1);
+
+        String mentionNames = availableAgentIds.stream()
+            .map(id -> cliAgentStore.findById(id).map(StoredCliAgent::getName).orElse(id))
+            .collect(Collectors.joining(", "));
+        log.info("Auto-discussion round {} in group {}: triggering [{}] (accumulated from batch)",
+            currentRound + 1, groupId, mentionNames);
+
+        // 触发被@的agent回复
+        for (String nextAgentId : availableAgentIds) {
+            sendToAgent(groupId, nextAgentId, completedContent, false);
+        }
+    }
+
+    /**
+     * 从agent输出中解析@mention（@AgentName形式）。
+     * 将检测到的agent名称映射回agent ID。
+     */
+    private List<String> parseAgentMentions(String groupId, String senderAgentId, String content) {
+        if (content == null || content.isBlank()) return new ArrayList<>();
+
+        StoredChatGroup group = chatGroupStore.findById(groupId).orElse(null);
+        if (group == null || group.getAgentIds() == null) return new ArrayList<>();
+
+        // 构建agentName→agentId映射（排除发送者自己）
+        Map<String, String> nameToId = new HashMap<>();
+        for (String aid : group.getAgentIds()) {
+            if (aid.equals(senderAgentId)) continue;
+            cliAgentStore.findById(aid).ifPresent(agent ->
+                nameToId.put(agent.getName(), agent.getId()));
+        }
+
+        if (nameToId.isEmpty()) return new ArrayList<>();
+
+        // 在内容中查找 @AgentName 模式（@前面必须是行首、空格或标点）
+        List<String> mentioned = new ArrayList<>();
+        for (Map.Entry<String, String> entry : nameToId.entrySet()) {
+            String name = entry.getKey();
+            String id = entry.getValue();
+            String pattern = "@" + name;
+            int idx = content.indexOf(pattern);
+            while (idx >= 0) {
+                // 检查@前面是否是合法位置（行首、空格、标点、换行）
+                boolean validPrefix = idx == 0 || !Character.isLetterOrDigit(content.charAt(idx - 1));
+                if (validPrefix) {
+                    mentioned.add(id);
+                    break;
+                }
+                idx = content.indexOf(pattern, idx + 1);
+            }
+        }
+
+        return mentioned;
+    }
+
+    /**
+     * 构建自动讨论模式下的Agent Prompt
+     * 与普通的buildAgentPrompt不同，这里强调agent应该回应其他agent的观点，
+     * 并告知其如何@mention群内其他agent
+     */
+    private String buildAutoDiscussionPrompt(String groupId, String currentAgentId) {
+        // 获取最近的群聊消息作为上下文（排除空内容的占位消息）
+        List<StoredChatGroupMessage> recentMessages = chatGroupMessageStore.find(
+            msg -> groupId.equals(msg.getGroupId()) && msg.getContent() != null && !msg.getContent().isEmpty());
+
+        recentMessages.sort(Comparator.comparing(StoredChatGroupMessage::getCreatedAt,
+            Comparator.nullsLast(Comparator.naturalOrder())));
+
+        // 最多取最近20条消息作为上下文
+        int contextLimit = 20;
+        int startIndex = Math.max(0, recentMessages.size() - contextLimit);
+        List<StoredChatGroupMessage> contextMessages = recentMessages.subList(startIndex, recentMessages.size());
+
+        // 获取群组信息
+        StoredChatGroup group = chatGroupStore.findById(groupId).orElse(null);
+        String groupName = group != null ? group.getName() : "群聊";
+
+        // 获取当前agent名称
+        String currentAgentName = cliAgentStore.findById(currentAgentId)
+            .map(StoredCliAgent::getName)
+            .orElse(currentAgentId);
+
+        // 构建群成员列表（排除当前agent）
+        List<String> otherMemberNames = new ArrayList<>();
+        if (group != null && group.getAgentIds() != null) {
+            for (String aid : group.getAgentIds()) {
+                if (!aid.equals(currentAgentId)) {
+                    cliAgentStore.findById(aid).ifPresent(a -> otherMemberNames.add(a.getName()));
+                }
+            }
+        }
+
+        // 找到最后一条agent消息作为讨论焦点
+        StoredChatGroupMessage lastAgentMsg = null;
+        for (int i = contextMessages.size() - 1; i >= 0; i--) {
+            StoredChatGroupMessage msg = contextMessages.get(i);
+            if ("agent".equals(msg.getSenderType()) && !currentAgentId.equals(msg.getSenderAgentId())) {
+                lastAgentMsg = msg;
+                break;
+            }
+        }
+
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("[群聊讨论模式] 你正在参与群聊「").append(groupName).append("」的讨论，你的身份是「").append(currentAgentName).append("」。\n");
+        prompt.append("这是一场多Agent讨论/辩论，你需要认真思考并回应其他参与者的观点。\n\n");
+
+        // 列出所有群成员
+        prompt.append("群聊成员：你(").append(currentAgentName).append(")");
+        if (!otherMemberNames.isEmpty()) {
+            prompt.append("、").append(String.join("、", otherMemberNames));
+        }
+        prompt.append("\n\n");
+
+        prompt.append("以下是最近的群聊记录：\n");
+        prompt.append("---\n");
+
+        for (StoredChatGroupMessage msg : contextMessages) {
+            String senderLabel;
+            if ("user".equals(msg.getSenderType())) {
+                senderLabel = "用户(" + msg.getSenderName() + ")";
+            } else if ("agent".equals(msg.getSenderType())) {
+                if (currentAgentId.equals(msg.getSenderAgentId())) {
+                    senderLabel = "你(" + msg.getSenderName() + ")";
+                } else {
+                    senderLabel = msg.getSenderName();
+                }
+            } else {
+                senderLabel = "系统";
+            }
+            prompt.append(senderLabel).append(": ").append(msg.getContent()).append("\n");
+        }
+
+        prompt.append("---\n\n");
+
+        if (lastAgentMsg != null) {
+            prompt.append("请针对「").append(lastAgentMsg.getSenderName()).append("」的最新发言进行回应。\n");
+        }
+
+        prompt.append("要求：\n");
+        prompt.append("1. 以「").append(currentAgentName).append("」的身份发表你的观点\n");
+        prompt.append("2. 你可以赞同、反驳、补充或提出新的角度\n");
+        prompt.append("3. 保持讨论的深度和质量，避免简单重复他人观点\n");
+        prompt.append("4. 回复要简洁有力，控制在合理的篇幅内\n");
+        if (!otherMemberNames.isEmpty()) {
+            prompt.append("5. 【重要】你必须在回复中使用 @成员名称 来指定你希望谁来回应你。");
+            prompt.append("只有被你@的成员才会看到并回应你的消息。\n");
+            prompt.append("   可用的成员：");
+            for (int i = 0; i < otherMemberNames.size(); i++) {
+                if (i > 0) prompt.append("、");
+                prompt.append("@").append(otherMemberNames.get(i));
+            }
+            prompt.append("\n");
+            prompt.append("   你可以@一个或多个成员。例如在回复末尾加上 @").append(otherMemberNames.get(0));
+            if (otherMemberNames.size() > 1) {
+                prompt.append(" 或同时 @").append(otherMemberNames.get(0)).append(" @").append(otherMemberNames.get(1));
+            }
+            prompt.append("\n");
+            prompt.append("   如果你认为讨论已经充分或达成共识，可以不@任何人，讨论将自然结束。\n");
+        }
+
+        return prompt.toString();
+    }
+
+    /**
+     * 重置自动讨论状态（用户介入时调用）
+     */
+    private void resetAutoDiscussionState(String groupId) {
+        autoDiscussionActive.remove(groupId);
+        autoDiscussionRoundCounter.remove(groupId);
+        lastCompletedAgent.remove(groupId);
+        pendingMentionedAgentIds.remove(groupId);
+    }
+
+    /**
+     * 推送自动讨论状态变更到前端
+     */
+    private void pushAutoDiscussionStatus(String groupId, boolean running) {
+        String destination = TOPIC_GROUP + groupId + "/auto-discussion-status";
+        try {
+            Map<String, Object> status = new HashMap<>();
+            status.put("running", running);
+            status.put("groupId", groupId);
+            messagingTemplate.convertAndSend(destination, status);
+            log.debug("Pushed auto-discussion status to {}: running={}", destination, running);
+        } catch (Exception e) {
+            log.error("Failed to push auto-discussion status to {}: {}", destination, e.getMessage());
+        }
+    }
+
+    @Override
+    public void stopAutoDiscussion(String groupId) {
+        boolean wasActive = Boolean.TRUE.equals(autoDiscussionActive.get(groupId));
+        resetAutoDiscussionState(groupId);
+        if (wasActive) {
+            addSystemMessage(groupId, "🛑 用户中断了自动讨论");
+            pushAutoDiscussionStatus(groupId, false);
+        }
+        log.info("Auto-discussion stopped for group {}", groupId);
+    }
+
+    @Override
+    public boolean isAutoDiscussionRunning(String groupId) {
+        return Boolean.TRUE.equals(autoDiscussionActive.get(groupId));
+    }
+
+    @Override
+    public ChatGroupInfo updateAutoDiscussionSettings(String groupId, Boolean autoDiscussion, Integer maxAutoRounds) {
+        StoredChatGroup group = chatGroupStore.findById(groupId)
+            .orElseThrow(() -> new IllegalArgumentException("群组不存在: " + groupId));
+
+        if (autoDiscussion != null) {
+            group.setAutoDiscussion(autoDiscussion);
+            if (!autoDiscussion) {
+                // 关闭自动讨论时停止正在进行的讨论
+                stopAutoDiscussion(groupId);
+            }
+        }
+        if (maxAutoRounds != null && maxAutoRounds > 0) {
+            group.setMaxAutoRounds(maxAutoRounds);
+        }
+        group.setUpdatedAt(LocalDateTime.now());
+        chatGroupStore.save(groupId, group);
+
+        log.info("Updated auto-discussion settings for group {}: autoDiscussion={}, maxAutoRounds={}",
+            groupId, group.isAutoDiscussion(), group.getMaxAutoRounds());
+        return toGroupInfo(group);
     }
 }

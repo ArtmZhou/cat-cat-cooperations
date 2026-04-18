@@ -62,6 +62,38 @@
                 🤖 {{ agent.name }}
               </el-tag>
             </div>
+            <!-- 自动讨论开关 -->
+            <div class="auto-discussion-controls">
+              <el-tooltip content="开启后Agent会自动互相讨论/博弈" placement="bottom">
+                <el-switch
+                  v-model="autoDiscussionEnabled"
+                  active-text="自动讨论"
+                  inactive-text=""
+                  size="small"
+                  @change="handleAutoDiscussionToggle"
+                />
+              </el-tooltip>
+              <el-tooltip v-if="autoDiscussionEnabled" content="自动讨论最大轮数" placement="bottom">
+                <el-input-number
+                  v-model="maxAutoRounds"
+                  :min="1"
+                  :max="20"
+                  size="small"
+                  controls-position="right"
+                  class="rounds-input"
+                  @change="handleMaxRoundsChange"
+                />
+              </el-tooltip>
+              <el-button
+                v-if="autoDiscussionRunning"
+                type="danger"
+                size="small"
+                @click="handleStopAutoDiscussion"
+                class="stop-discussion-btn"
+              >
+                🛑 中断讨论
+              </el-button>
+            </div>
             <el-button size="small" @click="clearChat">清空对话</el-button>
           </div>
         </div>
@@ -72,6 +104,7 @@
             <div class="empty-icon">💬</div>
             <p>开始群聊吧！</p>
             <p class="hint">发送消息给所有Agent，或在输入框中输入 @ 指定Agent</p>
+            <p v-if="autoDiscussionEnabled" class="hint">💡 自动讨论模式已开启，Agent会通过@互相回应、讨论</p>
           </div>
 
           <div
@@ -109,6 +142,12 @@
               </div>
               <div class="message-text" v-html="formatMessage(output)"></div>
             </div>
+          </div>
+
+          <!-- 自动讨论进行中指示器 -->
+          <div v-if="autoDiscussionRunning && Object.keys(activeOutputs).length === 0" class="auto-discussion-indicator">
+            <div class="discussion-pulse"></div>
+            <span>🔄 自动讨论进行中... 等待被@的Agent回应</span>
           </div>
         </div>
 
@@ -229,6 +268,27 @@
             <el-empty v-if="allAgents.length === 0" description="暂无Agent，请先创建" :image-size="40" />
           </div>
         </el-form-item>
+        <el-form-item label="自动讨论">
+          <div class="auto-discussion-form">
+            <el-switch
+              v-model="groupForm.autoDiscussion"
+              active-text="开启"
+              inactive-text="关闭"
+            />
+            <div v-if="groupForm.autoDiscussion" class="auto-discussion-desc">
+              <p>开启后，Agent通过@指定成员来互相回应和讨论，只有被@的Agent才会响应</p>
+              <el-form-item label="最大轮数" class="rounds-form-item">
+                <el-input-number
+                  v-model="groupForm.maxAutoRounds"
+                  :min="1"
+                  :max="20"
+                  size="small"
+                />
+                <span class="rounds-hint">每次用户发言后，Agent自动讨论的最大轮数</span>
+              </el-form-item>
+            </div>
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showCreateDialog = false">取消</el-button>
@@ -252,7 +312,8 @@ import {
   getChatGroup,
   sendGroupMessage,
   getGroupMessages,
-  clearGroupMessages
+  clearGroupMessages,
+  stopAutoDiscussion
 } from '@/api/chatGroup'
 import { getAgents } from '@/api/cliAgent'
 import { cliWebSocket } from '@/utils/websocket'
@@ -270,6 +331,9 @@ interface ChatGroup {
   description: string
   agentIds: string[]
   agents: AgentBrief[]
+  autoDiscussion: boolean
+  maxAutoRounds: number
+  autoDiscussionRunning: boolean
   createdAt: string
   updatedAt: string
 }
@@ -306,6 +370,11 @@ const mentionHighlightIndex = ref(0) // 键盘导航高亮索引
 // Streaming output state: agentId -> accumulated text
 const activeOutputs = ref<Record<string, string>>({})
 
+// Auto-discussion state
+const autoDiscussionEnabled = ref(false)
+const autoDiscussionRunning = ref(false)
+const maxAutoRounds = ref(6)
+
 // All agents (for group creation)
 const allAgents = ref<AgentBrief[]>([])
 
@@ -316,7 +385,9 @@ const savingGroup = ref(false)
 const groupForm = ref({
   name: '',
   description: '',
-  agentIds: [] as string[]
+  agentIds: [] as string[],
+  autoDiscussion: false,
+  maxAutoRounds: 6
 })
 
 // Spinner animation
@@ -380,6 +451,7 @@ watch(selectedGroup, (newGroup, oldGroup) => {
   activeOutputs.value = {}
   mentionedAgentIds.value = []
   showMentionPopup.value = false
+  autoDiscussionRunning.value = false
   closeMentionPopupFromInput()
 })
 
@@ -424,6 +496,10 @@ async function loadGroupMessages(groupId: string) {
 // ===== Group Selection =====
 async function selectGroup(group: ChatGroup) {
   selectedGroup.value = group
+  // 同步自动讨论状态
+  autoDiscussionEnabled.value = group.autoDiscussion || false
+  maxAutoRounds.value = group.maxAutoRounds || 6
+  autoDiscussionRunning.value = group.autoDiscussionRunning || false
   await loadGroupMessages(group.id)
 }
 
@@ -476,6 +552,12 @@ function subscribeToGroup(groupId: string) {
         loadGroupMessages(selectedGroup.value.id)
       }
     }
+  })
+
+  // Subscribe to auto-discussion status changes
+  cliWebSocket.subscribeGroupAutoDiscussionStatus(groupId, (data: { groupId: string, running: boolean }) => {
+    console.log('Auto-discussion status:', data)
+    autoDiscussionRunning.value = data.running || false
   })
 }
 
@@ -646,7 +728,7 @@ async function handleSaveGroup() {
 
     showCreateDialog.value = false
     editingGroup.value = null
-    groupForm.value = { name: '', description: '', agentIds: [] }
+    groupForm.value = { name: '', description: '', agentIds: [], autoDiscussion: false, maxAutoRounds: 6 }
     await loadGroups()
   } catch (error: any) {
     ElMessage.error(error.message || '操作失败')
@@ -661,7 +743,9 @@ function handleGroupAction(command: string, group: ChatGroup) {
     groupForm.value = {
       name: group.name,
       description: group.description || '',
-      agentIds: [...group.agentIds]
+      agentIds: [...group.agentIds],
+      autoDiscussion: group.autoDiscussion || false,
+      maxAutoRounds: group.maxAutoRounds || 6
     }
     showCreateDialog.value = true
   } else if (command === 'delete') {
@@ -692,6 +776,49 @@ async function clearChat() {
     ElMessage.success('对话已清空')
   } catch (error: any) {
     ElMessage.error(error.message || '清空失败')
+  }
+}
+
+// ===== Auto-Discussion =====
+async function handleAutoDiscussionToggle(value: boolean) {
+  if (!selectedGroup.value) return
+  try {
+    const updated = await updateChatGroup(selectedGroup.value.id, {
+      ...selectedGroup.value,
+      autoDiscussion: value,
+      maxAutoRounds: maxAutoRounds.value
+    })
+    if (updated) {
+      selectedGroup.value = updated as ChatGroup
+    }
+    ElMessage.success(value ? '自动讨论已开启' : '自动讨论已关闭')
+  } catch (error: any) {
+    ElMessage.error(error.message || '设置失败')
+    autoDiscussionEnabled.value = !value
+  }
+}
+
+async function handleMaxRoundsChange(value: number) {
+  if (!selectedGroup.value) return
+  try {
+    await updateChatGroup(selectedGroup.value.id, {
+      ...selectedGroup.value,
+      autoDiscussion: autoDiscussionEnabled.value,
+      maxAutoRounds: value
+    })
+  } catch (error: any) {
+    ElMessage.error(error.message || '设置失败')
+  }
+}
+
+async function handleStopAutoDiscussion() {
+  if (!selectedGroup.value) return
+  try {
+    await stopAutoDiscussion(selectedGroup.value.id)
+    autoDiscussionRunning.value = false
+    ElMessage.success('已中断自动讨论')
+  } catch (error: any) {
+    ElMessage.error(error.message || '中断失败')
   }
 }
 
@@ -1263,5 +1390,92 @@ function getAgentStatusText(status: string): string {
 @keyframes breathe {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
+}
+
+// ===== Auto-Discussion Controls =====
+.auto-discussion-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rounds-input {
+  width: 100px;
+}
+
+.stop-discussion-btn {
+  animation: pulse-glow 2s infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(245, 108, 108, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(245, 108, 108, 0.6);
+  }
+}
+
+// ===== Auto-Discussion Indicator =====
+.auto-discussion-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  margin: 8px 0;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.06), rgba(6, 182, 212, 0.06));
+  border: 1px solid rgba(124, 58, 237, 0.15);
+  border-radius: $radius-md;
+  font-size: 13px;
+  color: $text-secondary;
+
+  .discussion-pulse {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: $color-violet;
+    animation: discussion-pulse-anim 1.5s infinite;
+  }
+}
+
+@keyframes discussion-pulse-anim {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+}
+
+// ===== Auto-Discussion Form (in dialog) =====
+.auto-discussion-form {
+  width: 100%;
+}
+
+.auto-discussion-desc {
+  margin-top: 8px;
+  padding: 10px;
+  background: $bg-hover;
+  border-radius: $radius-sm;
+  font-size: 12px;
+  color: $text-muted;
+
+  p {
+    margin: 0 0 8px;
+  }
+}
+
+.rounds-form-item {
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+.rounds-hint {
+  font-size: 12px;
+  color: $text-muted;
+  margin-left: 8px;
 }
 </style>

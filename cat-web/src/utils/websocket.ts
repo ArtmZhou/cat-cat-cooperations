@@ -174,7 +174,7 @@ class CliWebSocketService {
 
   // 取消群聊订阅
   unsubscribeGroup(groupId) {
-    const keys = [`group-msg-${groupId}`, `group-agent-output-${groupId}`]
+    const keys = [`group-msg-${groupId}`, `group-agent-output-${groupId}`, `group-auto-discussion-${groupId}`]
     keys.forEach(key => {
       const sub = this.subscriptions.get(key)
       if (sub) {
@@ -182,6 +182,27 @@ class CliWebSocketService {
         this.subscriptions.delete(key)
       }
     })
+  }
+
+  // 订阅群聊自动讨论状态变更
+  subscribeGroupAutoDiscussionStatus(groupId, callback) {
+    if (!this.client || !this.connected) {
+      console.warn('WebSocket not connected')
+      return null
+    }
+
+    const topic = `/topic/chat-group/${groupId}/auto-discussion-status`
+    const subscription = this.client.subscribe(topic, (message) => {
+      try {
+        const data = JSON.parse(message.body)
+        callback(data)
+      } catch (e) {
+        callback({ running: false })
+      }
+    })
+
+    this.subscriptions.set(`group-auto-discussion-${groupId}`, subscription)
+    return subscription
   }
 }
 

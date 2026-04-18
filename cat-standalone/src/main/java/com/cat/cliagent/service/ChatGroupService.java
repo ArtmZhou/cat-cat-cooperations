@@ -79,6 +79,31 @@ public interface ChatGroupService {
     void clearGroupMessages(String groupId);
 
     /**
+     * 停止群聊的自动讨论
+     *
+     * @param groupId 群组ID
+     */
+    void stopAutoDiscussion(String groupId);
+
+    /**
+     * 获取群聊自动讨论状态
+     *
+     * @param groupId 群组ID
+     * @return 是否正在自动讨论
+     */
+    boolean isAutoDiscussionRunning(String groupId);
+
+    /**
+     * 更新自动讨论设置
+     *
+     * @param groupId 群组ID
+     * @param autoDiscussion 是否开启自动讨论（null表示不更新）
+     * @param maxAutoRounds 最大自动讨论轮数（null表示不更新）
+     * @return 更新后的群组信息
+     */
+    ChatGroupInfo updateAutoDiscussionSettings(String groupId, Boolean autoDiscussion, Integer maxAutoRounds);
+
+    /**
      * 群组信息
      */
     record ChatGroupInfo(
@@ -87,6 +112,9 @@ public interface ChatGroupService {
         String description,
         List<String> agentIds,
         List<AgentBrief> agents,
+        boolean autoDiscussion,
+        int maxAutoRounds,
+        boolean autoDiscussionRunning,
         String createdAt,
         String updatedAt
     ) {}
