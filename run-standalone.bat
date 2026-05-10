@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 
-:: 猫猫多Agent协同系统 - 快速启动脚本 (单机版)
+:: 猫猫多Agent协同系统 - 快速启动脚本
 
 echo.
 echo 🐱 猫猫多Agent协同系统 - 快速启动
@@ -24,8 +24,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [1/3] 构建项目...
-call mvn clean install -DskipTests -pl cat-common,cat-runtime,cat-agent,cat-task,cat-orchestration,cat-standalone -am
+echo [1/2] 构建项目...
+call mvn clean package -pl cat-standalone -am -DskipTests
 if errorlevel 1 (
     echo ✗ 构建失败
     pause
@@ -33,11 +33,9 @@ if errorlevel 1 (
 )
 
 echo.
-echo [2/3] 启动服务...
-echo.
+echo [2/2] 启动服务...
 start "Cat Agent Platform" java -jar cat-standalone/target/cat-standalone-1.0.0-SNAPSHOT.jar
 
-echo [3/3] 等待服务启动...
 timeout /t 5 /nobreak >nul
 
 echo.
@@ -47,9 +45,7 @@ echo ==================================
 echo.
 echo 访问地址:
 echo   API:      http://localhost:8080/api/v1
-echo   H2控制台: http://localhost:8080/h2-console
-echo.
-echo 默认用户: admin / admin123
-echo H2连接: jdbc:h2:./data/cat_agent (用户名: sa, 密码为空)
+echo   前端界面: http://localhost:3000
+echo   数据目录: ./data/
 echo.
 pause

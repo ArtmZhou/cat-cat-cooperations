@@ -5,8 +5,6 @@ import com.cat.common.exception.BusinessException;
 import com.cat.store.JsonFileStore;
 import com.cat.store.entity.StoredCliAgent;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -24,14 +22,8 @@ public class CliTaskExecutionService {
 
     private final JsonFileStore<StoredCliAgent> cliAgentStore;
     private final CliAgentService cliAgentService;
-
-    @Lazy
-    @Autowired
-    private CliSessionService sessionService;
-
-    @Lazy
-    @Autowired
-    private CliOutputPushService outputPushService;
+    private final CliSessionService sessionService;
+    private final CliOutputPushService outputPushService;
 
     // 任务执行器
     private final ExecutorService taskExecutor = Executors.newCachedThreadPool();
@@ -52,9 +44,13 @@ public class CliTaskExecutionService {
     private static final int DEFAULT_TIMEOUT_SECONDS = 300;
 
     public CliTaskExecutionService(JsonFileStore<StoredCliAgent> cliAgentStore,
-                                    CliAgentService cliAgentService) {
+                                    CliAgentService cliAgentService,
+                                    CliSessionService sessionService,
+                                    CliOutputPushService outputPushService) {
         this.cliAgentStore = cliAgentStore;
         this.cliAgentService = cliAgentService;
+        this.sessionService = sessionService;
+        this.outputPushService = outputPushService;
     }
 
     public TaskExecutionResult executeTask(String agentId, String input, int timeoutSeconds) {
