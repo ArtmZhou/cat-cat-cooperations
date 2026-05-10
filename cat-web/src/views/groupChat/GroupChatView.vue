@@ -43,6 +43,7 @@
         />
 
         <ChatInput
+          :key="selectedGroup.id"
           :agents="selectedGroup.agents"
           :mentioned-agent-ids="mentionedAgentIds"
           :is-sending="isSending"
@@ -86,7 +87,7 @@ import {
 } from '@/api/chatGroup'
 import { getAgents } from '@/api/cliAgent'
 import { cliWebSocket } from '@/utils/websocket'
-import type { ChatGroup, ChatMessage, GroupForm } from '@/types/models'
+import type { ChatGroup, ChatMessage, GroupForm, AgentBrief } from '@/types/models'
 import ChatSidebar from './components/ChatSidebar.vue'
 import ChatMessageList from './components/ChatMessageList.vue'
 import ChatInput from './components/ChatInput.vue'
@@ -96,7 +97,7 @@ import GroupCreateDialog from './components/GroupCreateDialog.vue'
 const groups = ref<ChatGroup[]>([])
 const selectedGroup = ref<ChatGroup | null>(null)
 const messages = ref<ChatMessage[]>([])
-const allAgents = ref<Array<{ id: string; name: string; status: string }>>([])
+const allAgents = ref<AgentBrief[]>([])
 const wsConnected = ref(false)
 
 // Group form / dialog
