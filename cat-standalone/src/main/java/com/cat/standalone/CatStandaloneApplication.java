@@ -29,7 +29,6 @@ public class CatStandaloneApplication {
             "  🐱 猫猫多Agent协同系统 启动成功！\n" +
             "  ═════════════════════════════════════════\n" +
             "  API地址: http://localhost:8080/api/v1\n" +
-            "  默认用户: admin / admin123\n" +
             "  数据目录: ./data/\n" +
             "  ═════════════════════════════════════════\n"
         );
