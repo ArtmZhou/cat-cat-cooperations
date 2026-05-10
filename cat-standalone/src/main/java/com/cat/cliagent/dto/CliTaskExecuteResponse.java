@@ -1,5 +1,6 @@
 package com.cat.cliagent.dto;
 
+import com.cat.cliagent.CliTaskExecutionService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -48,7 +49,7 @@ public class CliTaskExecuteResponse {
     }
 
     public static CliTaskExecuteResponse fromResult(
-            com.cat.cliagent.service.CliTaskExecutionService.TaskExecutionResult result) {
+            CliTaskExecutionService.TaskExecutionResult result) {
         CliTaskExecuteResponse response = new CliTaskExecuteResponse();
         response.setTaskId(result.taskId());
         response.setAgentId(result.agentId());
