@@ -1,6 +1,12 @@
 package com.cat.standalone.store;
 
-import com.cat.standalone.store.entity.*;
+import com.cat.standalone.store.entity.StoredChatGroup;
+import com.cat.standalone.store.entity.StoredChatGroupMessage;
+import com.cat.standalone.store.entity.StoredCliAgent;
+import com.cat.standalone.store.entity.StoredCliAgentCapability;
+import com.cat.standalone.store.entity.StoredCliAgentOutputLog;
+import com.cat.standalone.store.entity.StoredCliAgentTemplate;
+import com.cat.standalone.store.entity.StoredTokenUsageLog;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -26,31 +32,6 @@ public class StoreConfig {
         mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         mapper.enable(SerializationFeature.INDENT_OUTPUT);
         return mapper;
-    }
-
-    @Bean
-    public JsonFileStore<StoredAgent> agentStore() {
-        return new JsonFileStore<>(dataDir, "agents", StoredAgent.class);
-    }
-
-    @Bean
-    public JsonFileStore<StoredTask> taskStore() {
-        return new JsonFileStore<>(dataDir, "tasks", StoredTask.class);
-    }
-
-    @Bean
-    public JsonFileStore<StoredAgentCapability> capabilityStore() {
-        return new JsonFileStore<>(dataDir, "capabilities", StoredAgentCapability.class);
-    }
-
-    @Bean
-    public JsonFileStore<StoredTaskAssignment> assignmentStore() {
-        return new JsonFileStore<>(dataDir, "assignments", StoredTaskAssignment.class);
-    }
-
-    @Bean
-    public JsonFileStore<StoredTaskLog> taskLogStore() {
-        return new JsonFileStore<>(dataDir, "task_logs", StoredTaskLog.class);
     }
 
     @Bean
