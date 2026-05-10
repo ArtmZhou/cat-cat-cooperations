@@ -196,13 +196,6 @@ function isMenuActive(path: string): boolean {
   }
 }
 
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-}
-
 .avatar-ring {
   display: flex;
   align-items: center;
@@ -217,11 +210,6 @@ function isMenuActive(path: string): boolean {
   color: $text-primary !important;
   font-weight: 600;
   font-size: 13px;
-}
-
-.username {
-  color: $text-primary;
-  font-size: 14px;
 }
 
 // ===== Main Content =====
