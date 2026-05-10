@@ -2,29 +2,17 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
   {
-    path: '/login',
-    name: 'Login',
-    component: () => import('@/views/login/LoginView.vue'),
-    meta: { requiresAuth: false }
+    path: '/',
+    redirect: '/dashboard'
   },
   {
     path: '/',
     component: () => import('@/components/layout/AppLayout.vue'),
-    meta: { requiresAuth: false },
     children: [
-      {
-        path: '',
-        redirect: '/dashboard'
-      },
       {
         path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/dashboard/DashboardView.vue')
-      },
-      {
-        path: 'group-chat',
-        name: 'GroupChat',
-        component: () => import('@/views/groupChat/GroupChatView.vue')
       },
       {
         path: 'cli-agents',
@@ -37,24 +25,9 @@ const routes = [
         component: () => import('@/views/cliAgent/CliAgentDetailView.vue')
       },
       {
-        path: 'agents',
-        name: 'AgentList',
-        component: () => import('@/views/agent/AgentListView.vue')
-      },
-      {
-        path: 'agents/:id',
-        name: 'AgentDetail',
-        component: () => import('@/views/agent/AgentDetailView.vue')
-      },
-      {
-        path: 'users',
-        name: 'UserManagement',
-        component: () => import('@/views/user/UserManagementView.vue')
-      },
-      {
-        path: 'roles',
-        name: 'RoleManagement',
-        component: () => import('@/views/user/RoleManagementView.vue')
+        path: 'group-chat',
+        name: 'GroupChat',
+        component: () => import('@/views/groupChat/GroupChatView.vue')
       }
     ]
   }
@@ -64,17 +37,5 @@ const router = createRouter({
   history: createWebHistory(),
   routes
 })
-
-// 简化：去掉路由守卫，直接允许访问所有页面
-// router.beforeEach((to, from, next) => {
-//   const authStore = useAuthStore()
-//   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-//     next('/login')
-//   } else if (to.path === '/login' && authStore.isAuthenticated) {
-//     next('/dashboard')
-//   } else {
-//     next()
-//   }
-// })
 
 export default router

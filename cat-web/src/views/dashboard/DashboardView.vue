@@ -51,7 +51,7 @@ import {
   RefreshIcon,
   PlusCircleIcon,
   MessageBubbleIcon
-} from '@/components/CatIcons.vue'
+} from '@/components/CatIcons'
 
 const loading = ref(false)
 const overview = ref({

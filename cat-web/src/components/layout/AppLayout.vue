@@ -29,21 +29,9 @@
           </button>
         </div>
         <div class="header-right">
-          <el-dropdown @command="handleCommand">
-            <span class="user-info">
-              <span class="avatar-ring">
-                <el-avatar :size="30" class="user-avatar">
-                  {{ displayName?.charAt(0)?.toUpperCase() || 'U' }}
-                </el-avatar>
-              </span>
-              <span class="username">{{ displayName || '用户' }}</span>
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          <span class="avatar-ring">
+            <el-avatar :size="30" class="user-avatar">U</el-avatar>
+          </span>
         </div>
       </header>
 
@@ -55,9 +43,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
+import { ref } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   CatLogo,
   DashboardIcon,
@@ -65,14 +52,11 @@ import {
   MessageBubbleIcon,
   FoldIcon,
   ExpandIcon
-} from '@/components/CatIcons.vue'
+} from '@/components/CatIcons'
 
 const route = useRoute()
-const router = useRouter()
-const authStore = useAuthStore()
 
 const isCollapsed = ref(false)
-const displayName = computed(() => authStore.username || '用户')
 
 const menuItems = [
   { path: '/dashboard', label: '仪表盘', icon: DashboardIcon },
@@ -84,12 +68,6 @@ function isMenuActive(path: string): boolean {
   return route.path === path || route.path.startsWith(path + '/')
 }
 
-function handleCommand(command: string) {
-  if (command === 'logout') {
-    authStore.logout()
-    router.push('/login')
-  }
-}
 </script>
 
 <style lang="scss" scoped>

@@ -1,4 +1,3 @@
-<script lang="ts">
 // Functional SVG icon components for the dark tech cat theme.
 // All icons use stroke style, 24x24 viewBox, stroke-width 1.5.
 // Usage: <CatLogo :size="32" color="#7C3AED" />
@@ -196,4 +195,4 @@ export const ExpandIcon = defineComponent({
     ])])
   }
 })
-</script>
+
