@@ -1,9 +1,16 @@
 # 猫猫多Agent协同系统架构说明书
 
 **文档编号:** ARCH-001
-**版本:** 1.1.0
-**日期:** 2026-04-03
-**状态:** 已发布
+**版本:** 1.2.0
+**日期:** 2026-05-11
+**状态:** 部分章节需更新（见文首说明）
+
+> **注意：** 本文档大部分章节描述的是计划中的微服务架构，与当前实际运行的单机模式（Standalone）存在差异。第2.3.1节"单机模式"准确描述了当前项目状态。其他章节中关于微服务模块（cat-auth, cat-task, cat-orchestration, cat-monitor, cat-audit, cat-gateway）、JWT认证、MySQL数据库、RBAC权限等内容，在当前代码库中**尚未实现**或**已被移除**。
+>
+> 当前实际架构请参考：
+> - [CLAUDE.md](../CLAUDE.md) — 项目开发指南（已更新）
+> - [README.md](../README.md) — 项目说明（已更新）
+> - [重构设计规格](../superpowers/specs/2026-05-10-platform-refactor-design.md) — 2026年5月重构设计
 
 ---
 
@@ -11,20 +18,16 @@
 
 ### 1.1 项目简介
 
-Cat Agent Platform (猫猫多Agent协同系统) 是一个多智能体协同工作平台，支持内置Agent和外部Agent的接入，提供任务编排、协同机制和状态监控等核心能力。系统采用前后端分离架构，后端基于Spring Boot微服务架构，前端基于Vue 3单页应用。
+Cat Agent Platform (猫猫多Agent协同系统) 是一个多智能体协同工作平台，当前实现为单机模式（Standalone），支持CLI Agent管理、多Agent群聊协作和实时监控。系统采用前后端分离架构，后端基于Spring Boot，前端基于Vue 3单页应用。
 
-### 1.2 核心功能
+### 1.2 当前核心功能
 
 | 功能领域 | 描述 |
 |---------|------|
-| **用户认证** | JWT Token认证、RBAC角色权限控制 |
-| **Agent管理** | 内置Agent创建配置、外部Agent接入、能力注册、状态监控 |
-| **任务执行** | 简单任务、流程化任务、并行任务、协商任务 |
-| **任务调度** | 立即执行、定时执行、周期执行 |
-| **协同机制** | 流程编排、并行处理、投票协商 |
-| **运行时执行** | 命令执行、API调用、文件操作、文本处理、MCP协议适配 |
-| **系统监控** | 系统指标采集、告警规则配置、告警通知 |
-| **审计日志** | 操作审计、日志查询导出 |
+| **CLI Agent管理** | Agent CRUD、进程生命周期（启动/停止/重启）、能力注册、Token统计 |
+| **多Agent群聊** | 群组管理、消息广播、@提及Agent、上下文感知、流式输出 |
+| **系统仪表盘** | Agent数量、执行状态、Token使用统计 |
+| **WebSocket推送** | CLI输出实时推送、群聊消息推送、状态变更通知 |
 
 ### 1.3 技术栈总览
 
@@ -34,17 +37,11 @@ Cat Agent Platform (猫猫多Agent协同系统) 是一个多智能体协同工�
 | 前端UI库 | Element Plus | 2.5+ | |
 | 前端构建 | Vite | 5.0+ | |
 | 前端语言 | TypeScript | 5.0+ | |
-| 前端状态管理 | Pinia | 2.1+ | |
 | 后端框架 | Spring Boot | 3.2.3 | |
 | 后端语言 | Java | 17 LTS | |
-| ORM框架 | MyBatis-Plus | 3.5.5 | |
-| API网关 | Spring Cloud Gateway | 2023.0.0 | 微服务模式 |
-| 认证方案 | JWT (jjwt) | 0.12.5 | 微服务模式 |
-| 数据存储 (单机) | JSON File Store | - | 本地JSON文件持久化 |
-| 缓存 (生产) | Redis | 7.0 | 微服务模式 |
-| 缓存 (开发) | Embedded Redis | 0.7.3 | 单机模式，嵌入式 |
-| 工具库 | Hutool | 5.8.26 | |
-| 容器化 | Docker Compose | - | |
+| 数据存储 | JSON File Store | - | 本地JSON文件持久化 |
+| 缓存 | Embedded Redis | - | 单机模式，嵌入式，可选 |
+| 实时通信 | STOMP over SockJS | - | WebSocket |
 
 ---
 
@@ -140,9 +137,10 @@ Cat Agent Platform (猫猫多Agent协同系统) 是一个多智能体协同工�
 │                         cat-standalone (Single JAR)                          │
 │  ┌────────────────────────────────────────────────────────────────────┐     │
 │  │                        Spring Boot Application                      │     │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │     │
-│  │  │cat-agent │ │ cat-task │ │cat-orch  │ │cat-runtime│ │SimpleAuth│ │     │
-│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ │     │
+│  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐                   │     │
+│  │  │  CLI Agent   │ │  Chat Group  │ │  Dashboard   │                   │     │
+│  │  │  管理/进程    │ │  群聊/消息   │ │  系统概览    │                   │     │
+│  │  └──────────────┘ └──────────────┘ └──────────────┘                   │     │
 │  └────────────────────────────────────────────────────────────────────┘     │
 │  ┌────────────────────┐  ┌────────────────────┐                             │
 │  │  JSON File Store   │  │   Embedded Redis   │                             │
@@ -157,17 +155,19 @@ Cat Agent Platform (猫猫多Agent协同系统) 是一个多智能体协同工�
 **特点:**
 - 无需外部依赖，一条命令启动
 - 数据存储在本地 `./data/` 目录的JSON文件中
-- **简化认证**：无需登录验证，任意用户名密码可直接进入
+- 无需认证，直接访问
 - 适合本地开发、演示、测试
 
 **数据文件:**
 | 文件 | 存储内容 |
 |------|----------|
-| agents.json | Agent实体数据 |
-| tasks.json | Task实体数据 |
-| capabilities.json | Agent能力数据 |
-| assignments.json | 任务分配数据 |
-| task_logs.json | 任务日志数据 |
+| cli_agents.json | CLI Agent实例数据 |
+| cli_agent_templates.json | Agent模板数据 |
+| cli_agent_capabilities.json | Agent能力数据 |
+| token_usage_logs.json | Token使用记录 |
+| cli_agent_output_logs.json | CLI输出日志 |
+| chat_groups.json | 聊天群组数据 |
+| chat_group_messages.json | 群聊消息数据 |
 
 **启动方式:**
 ```bash
@@ -287,29 +287,9 @@ run-standalone.bat    # Windows
 - `code > 0`: 业务错误码
 - `code < 0`: 系统错误码
 
-### 3.3 认证流程
+### 3.3 认证
 
-**单机模式 (Standalone) - 简化认证:**
-
-为简化本地开发体验，单机模式已移除认证验证：
-- 前端：去掉路由守卫，登录页面直接跳转
-- 后端：SimpleAuthInterceptor不再验证Token，允许所有请求通过
-- 登录页面：任意用户名密码可直接进入系统
-
-```
-┌──────────┐     ┌──────────────────────┐
-│  Client  │────▶│  cat-standalone      │
-│ (浏览器) │     │  (无认证拦截)        │
-└──────────┘     └──────────────────────┘
-     │                      │
-     │  1.任意账号登录      │
-     │ ────────────────────▶│
-     │                      │
-     │  2.直接进入系统      │
-     │◀──────────────────── │
-```
-
-**微服务模式 (Microservices) - JWT认证:**
+**单机模式 (当前实现):** 无认证，直接访问所有API和前端页面。
 
 ```
 ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
@@ -467,15 +447,13 @@ run-standalone.bat    # Windows
             ┌───────────┼───────────┐
             ▼           ▼           ▼
 ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│   Views      │ │   Stores     │ │    API       │
-│  页面组件    │ │  Pinia状态   │ │  Axios请求   │
+│   Views      │ │ Composables  │ │    API       │
+│  页面组件    │ │ 可复用逻辑   │ │  Axios请求   │
 │              │ │              │ │              │
-│ LoginView    │ │ authStore    │ │ auth.ts      │
-│ DashboardView│ │              │ │ agent.ts     │
-│ AgentListView│ │              │ │ cliAgent.js  │
+│ DashboardView│ │ useSpinner   │ │ cliAgent.ts  │
+│ CliAgentList │ │ useAgentPoll │ │ chatGroup.ts │
+│ CliAgentDetail│ │              │ │              │
 │ GroupChatView│ │              │ │              │
-│ UserMgmtView │ │              │ │              │
-│ RoleMgmtView │ │              │ │              │
 └──────────────┘ └──────────────┘ └──────────────┘
 ```
 
@@ -484,26 +462,28 @@ run-standalone.bat    # Windows
 ```
 cat-web/
 ├── src/
-│   ├── api/              # API请求模块
-│   │   ├── auth.ts       # 认证API
-│   │   ├── agent.ts      # Agent API
-│   │   └── cliAgent.js   # CLI Agent API
+│   ├── api/              # API请求模块 (TypeScript)
+│   │   ├── cliAgent.ts   # CLI Agent API
+│   │   ├── chatGroup.ts  # 群聊 API
+│   │   └── request.ts    # Axios封装
 │   ├── components/       # 公共组件
+│   │   ├── CatIcons.ts   # 12个SVG图标组件
 │   │   └── layout/
 │   │       └── AppLayout.vue  # 主布局
+│   ├── composables/      # 可复用逻辑
+│   │   ├── useSpinner.ts
+│   │   └── useAgentPolling.ts
+│   ├── types/            # 共享类型
+│   │   └── models.ts
 │   ├── router/           # 路由配置
-│   │   └── index.ts      # 路由定义+守卫
-│   ├── stores/           # Pinia状态
-│   │   └── auth.ts       # 认证状态
+│   │   └── index.ts      # 4条路由 (Dashboard/CLI Agent/群聊)
 │   ├── utils/            # 工具函数
-│   │   └── request.ts    # Axios封装
+│   │   ├── request.ts    # Axios封装
+│   │   └── websocket.ts  # STOMP WebSocket
 │   ├── views/            # 页面组件
-│   │   ├── login/
-│   │   ├── dashboard/
-│   │   ├── agent/
-│   │   ├── task/
-│   │   ├── monitor/
-│   │   └── user/
+│   │   ├── dashboard/    # 仪表盘
+│   │   ├── cliAgent/     # CLI Agent (列表/详情/对话框)
+│   │   └── groupChat/    # 群聊 (主视图 + 5个子组件)
 │   ├── App.vue           # 根组件
 │   └── main.ts           # 入口文件
 ├── package.json
@@ -511,17 +491,19 @@ cat-web/
 └── tsconfig.json
 ```
 
-### 5.3 猫猫主题设计
+### 5.3 深色科技风主题
 
-前端采用猫猫主题风格，配色方案：
+前端采用深色科技风（Dark Tech）主题，配色方案：
 
-| 颜色 | 用途 | CSS变量 |
+| 颜色 | 用途 | SCSS变量 |
 |------|------|----------|
-| 橙色 (#F5A623) | 主色调、按钮、强调 | --cat-primary |
-| 奶油色 (#FFF8E7) | 背景色 | --cat-background |
-| 深灰 (#333333) | 文字、边框 | --cat-text |
-| 浅灰 (#E8E8E8) | 卡片背景 | --cat-card |
-| 白色 (#FFFFFF) | 输入框、弹窗 | --cat-white |
+| 紫罗兰 (#7C3AED) | 主色调、激活状态、强调 | $color-violet |
+| 青色 (#06B6D4) | 辅助色、运行状态 | $color-cyan |
+| 深黑 (#0B0D14 → #161823) | 多层级背景 | $bg-deep → $bg-surface |
+| 浅灰 (#F0F0F0 / #9CA3AF / #4B5563) | 文字层级 | $text-primary / secondary / muted |
+| 红 (#EF4444) | 错误状态 | $danger |
+| 绿 (#10B981) | 成功状态 | $success |
+| 橙 (#F59E0B) | 警告状态 | $warning |
 
 ---
 
@@ -712,14 +694,12 @@ services:
 | 文件 | 路径 | 用途 |
 |------|------|------|
 | 根pom.xml | `pom.xml` | Maven项目配置 |
-| 数据库脚本 | `scripts/init-database.sql` | 数据库初始化 (MySQL - 微服务模式) |
-| Docker配置 | `docker-compose.yml` | 基础设施部署 |
 | 启动脚本 | `run-standalone.bat/sh` | 单机模式快速启动 |
-| API响应封装 | `cat-common/src/main/java/com/cat/common/model/ApiResponse.java` | 统一响应格式 |
-| 全局异常处理 | `cat-common/src/main/java/com/cat/common/exception/GlobalExceptionHandler.java` | 异常统一处理 |
-| 特性列表 | `feature-list.json` | 功能进度跟踪 |
-| JSON存储实现 | `cat-standalone/src/main/java/com/cat/standalone/store/` | JSON文件存储层 |
-| 单机启动模块 | `cat-standalone/` | 轻量级单机版本 |
+| 启动入口 | `cat-standalone/src/main/java/com/cat/CatApplication.java` | Spring Boot入口 |
+| API响应封装 | `cat-standalone/src/main/java/com/cat/common/ApiResponse.java` | 统一响应格式 |
+| 全局异常处理 | `cat-standalone/src/main/java/com/cat/config/GlobalExceptionHandler.java` | 异常统一处理 |
+| JSON存储实现 | `cat-standalone/src/main/java/com/cat/store/JsonFileStore.java` | JSON文件存储层 |
+| 前端主题变量 | `cat-web/src/assets/styles/_variables.scss` | 深色科技风设计令牌 |
 
 ### B. 参考文档
 

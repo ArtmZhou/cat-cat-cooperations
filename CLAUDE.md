@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Cat Agent Platform (猫猫多Agent协同系统) is a CLI Agent collaboration platform supporting external CLI tools (Claude Code, OpenCode, etc.) with task orchestration and real-time communication.
+Cat Agent Platform (猫猫多Agent协同系统) is a CLI Agent collaboration platform supporting external CLI tools (Claude Code, OpenCode, etc.) with real-time communication and multi-agent group chat.
 
 ## Build & Development Commands
 
@@ -26,7 +26,7 @@ run-standalone.bat  # Windows
 **Features:**
 - JSON file storage (no database required)
 - Embedded Redis server (optional, for caching)
-- Simplified authentication (any username/password works)
+- No authentication required (direct access)
 - Single process, easy local development
 
 **Access:**
@@ -80,38 +80,82 @@ npm run lint
 ```
 cat-cat-cooperations/
 ├── cat-standalone/    # Standalone module - all backend code
-│   ├── src/main/java/com/cat/standalone/    # Core services
-│   ├── src/main/java/com/cat/cliagent/      # CLI Agent services
-│   └── data/                                # JSON data files
+│   └── src/main/java/com/cat/
+│       ├── CatApplication.java        # Entry point
+│       ├── controller/                # REST controllers
+│       │   ├── CliAgentController.java
+│       │   ├── ChatGroupController.java
+│       │   ├── CliAgentMonitorController.java
+│       │   ├── CliAgentTemplateController.java
+│       │   └── CliAgentCapabilityController.java
+│       ├── cliagent/                  # CLI Agent services + DTOs
+│       │   ├── CliAgentService.java
+│       │   ├── CliProcessService.java
+│       │   ├── CliSessionService.java
+│       │   ├── CliTaskExecutionService.java
+│       │   ├── CliOutputPushService.java
+│       │   ├── TokenUsageService.java
+│       │   ├── CliAgentMonitorService.java
+│       │   ├── CliAgentTemplateService.java
+│       │   ├── CliAgentCapabilityService.java
+│       │   └── dto/
+│       ├── chatgroup/                 # Chat group service + entities
+│       │   ├── ChatGroupService.java
+│       │   └── entity/
+│       ├── config/                    # Spring configuration
+│       │   ├── WebConfig.java
+│       │   ├── WebSocketConfig.java
+│       │   ├── StoreConfig.java
+│       │   └── GlobalExceptionHandler.java
+│       ├── store/                     # JSON file storage layer
+│       │   ├── JsonFileStore.java
+│       │   └── entity/
+│       ├── common/                    # Shared models
+│       │   ├── ApiResponse.java
+│       │   ├── PageResult.java
+│       │   └── BusinessException.java
+│       └── dashboard/                 # Dashboard (if separate)
 └── cat-web/           # Vue 3 frontend SPA
     └── src/
-        ├── api/       # API client modules
-        ├── assets/styles/  # SCSS design system (dark tech theme)
+        ├── api/              # API client modules (TypeScript)
+        │   ├── cliAgent.ts
+        │   ├── chatGroup.ts
+        │   └── request.ts
+        ├── assets/styles/    # SCSS design system (dark tech theme)
         │   ├── _variables.scss  # Design tokens (colors, spacing, etc.)
         │   └── main.scss        # Global styles + Element Plus overrides
-        ├── components/     # Shared components
-        │   ├── CatIcons.vue     # 12 SVG icon components
-        │   └── layout/          # AppLayout (dark sidebar + glass header)
-        ├── views/     # Page components
-        ├── stores/    # Pinia state management
-        └── utils/     # Utilities (WebSocket, etc.)
+        ├── components/       # Shared components
+        │   ├── CatIcons.ts       # 12 SVG icon components (functional)
+        │   └── layout/           # AppLayout (dark sidebar + glass header)
+        ├── composables/      # Reusable composables
+        │   ├── useSpinner.ts
+        │   └── useAgentPolling.ts
+        ├── types/            # Shared TypeScript types
+        │   └── models.ts
+        ├── views/            # Page components
+        │   ├── dashboard/    # DashboardView
+        │   ├── cliAgent/     # CliAgentListView, CliAgentDetailView + dialogs
+        │   └── groupChat/    # GroupChatView + sub-components
+        ├── router/           # Vue Router config (4 routes)
+        └── utils/            # Utilities (request, websocket)
 ```
 
 ### Backend Layer Architecture
 
-- Controller → Service → JsonFileStore
-- Entity classes in `store/entity/`, DTOs in `dto/`
+- Controller → Service → JsonFileStore (flat, no interface/implementation split)
+- Entity classes in `store/entity/` and `chatgroup/entity/`, DTOs in `cliagent/dto/`
 - Global exception handling via `GlobalExceptionHandler`
 - Standardized API responses via `ApiResponse<T>`
+- Spring component scan: `com.cat`
 
 ### Frontend Structure
 
-- Vue 3 Composition API with `<script setup>`
+- Vue 3 Composition API with `<script setup lang="ts">`
 - **Dark tech theme**: Violet→Cyan gradient, glassmorphism, custom SVG icons
 - Design tokens in `_variables.scss`, Element Plus dark overrides in `main.scss`
-- API modules in `src/api/`
-- Pinia stores in `src/stores/`
+- API modules in `src/api/` (TypeScript)
 - WebSocket via `@stomp/stompjs`
+- No authentication store (direct access, no login required)
 
 ### CLI Agent Architecture
 
@@ -124,13 +168,21 @@ cat-cat-cooperations/
 - On backend restart, all RUNNING/EXECUTING agents are automatically reset to STOPPED
 - This prevents stale status display since process context is lost on restart
 
-**Key Services:**
-- `LocalCliAgentService` - Agent CRUD operations
-- `LocalCliSessionService` - Session & process management
-- `LocalCliProcessService` - Process lifecycle
-- `LocalCliTaskExecutionService` - Task execution
-- `LocalTokenUsageService` - Token usage tracking
-- `LocalCliOutputPushService` - WebSocket output push
+**Key Services (all in `com.cat.cliagent`):**
+- `CliAgentService` - Agent CRUD operations
+- `CliSessionService` - Session & process management
+- `CliProcessService` - Process lifecycle
+- `CliTaskExecutionService` - Task execution
+- `TokenUsageService` - Token usage tracking
+- `CliOutputPushService` - WebSocket output push
+- `CliAgentMonitorService` - System overview for dashboard
+- `CliAgentTemplateService` - Template management
+- `CliAgentCapabilityService` - Capability management
+
+### Chat Group Architecture
+
+**Key Service (in `com.cat.chatgroup`):**
+- `ChatGroupService` - Group CRUD, messaging, @mentions, context-aware agent prompts, output routing
 
 ### Data Storage
 
@@ -139,10 +191,9 @@ cat-cat-cooperations/
 - `cli_agent_templates.json` - CLI Agent templates
 - `cli_agent_capabilities.json` - Agent capabilities
 - `token_usage_logs.json` - Token usage records
-- `cli_agent_output_logs.json` - CLI Agent output logs (每Agent最多100条)
-- `tasks.json` - Task entities (backend only, no frontend UI)
-- `task_assignments.json` - Task assignments (backend only)
-- `task_logs.json` - Task execution logs (backend only)
+- `cli_agent_output_logs.json` - CLI Agent output logs (max 100 per agent)
+- `chat_groups.json` - Chat groups
+- `chat_group_messages.json` - Chat group messages (max 200 per group)
 
 **Format:** Jackson with Java 8 time support
 
@@ -173,8 +224,25 @@ cat-cat-cooperations/
 **CLI Agent Monitoring:**
 - `GET /api/v1/cli-agents/monitor/overview` - System overview (used by dashboard)
 
-## Development Workflow
+**Chat Groups:**
+- `GET/POST /api/v1/chat-groups` - List/create groups
+- `GET/PUT/DELETE /api/v1/chat-groups/{id}` - Group operations
+- `POST /api/v1/chat-groups/{id}/messages` - Send message (supports @mentions and broadcast)
+- `GET /api/v1/chat-groups/{id}/messages` - Get message history
+- `POST /api/v1/chat-groups/{id}/messages/clear` - Clear messages
 
-This project uses long-task methodology:
-- Feature progress tracked in `feature-list.json`
-- See `long-task-guide.md` for workflow details
+**Templates & Capabilities:**
+- `GET/POST /api/v1/cli-agent/templates` - Template management
+- `GET /api/v1/cli-agents/capability-types` - Capability type listing
+
+## Testing
+
+```bash
+# Run all backend tests (46 tests)
+mvn test -pl cat-standalone
+
+# Test files
+cat-standalone/src/test/java/com/cat/cliagent/CliAgentServiceTest.java      # 19 tests
+cat-standalone/src/test/java/com/cat/cliagent/CliProcessServiceTest.java     # 21 tests
+cat-standalone/src/test/java/com/cat/cliagent/CliOutputPushServiceTest.java  # 6 tests
+```
