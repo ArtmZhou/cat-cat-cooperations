@@ -11,11 +11,6 @@ spring:
 # 数据存储配置
 cat:
   data-dir: ./data
-  auth:
-    enabled: true
-    default-user: admin
-    default-password: admin123
-    token-header: X-Cat-Token
 
 # 日志配置
 logging:

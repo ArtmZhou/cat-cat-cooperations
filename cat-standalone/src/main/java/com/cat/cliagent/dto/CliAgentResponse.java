@@ -53,6 +53,9 @@ public class CliAgentResponse {
     @Schema(description = "进程ID")
     private String processId;
 
+    @Schema(description = "绑定的知识库ID列表")
+    private List<String> knowledgeBaseIds;
+
     @Schema(description = "能力列表")
     private List<CapabilityResponse> capabilities;
 

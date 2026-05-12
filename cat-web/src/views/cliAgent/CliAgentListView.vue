@@ -85,154 +85,36 @@
       <el-empty v-if="!loading && agents.length === 0" description="暂无CLI Agent，点击右上角创建" />
     </div>
 
-    <!-- 创建Agent对话框 -->
-    <el-dialog v-model="showCreateDialog" title="创建CLI Agent" width="600px" :close-on-click-modal="false">
-      <el-form :model="createForm" label-width="100px">
-        <el-form-item label="选择模板" required>
-          <el-select v-model="createForm.templateId" style="width: 100%" @change="onTemplateChange" placeholder="请选择CLI模板">
-            <el-option v-for="t in templates" :key="t.id" :label="t.name" :value="t.id">
-              <span>{{ t.name }}</span>
-              <span style="color: #999; margin-left: 10px;">{{ t.description }}</span>
-            </el-option>
-          </el-select>
-        </el-form-item>
-        <el-form-item label="Agent名称" required>
-          <el-input v-model="createForm.name" placeholder="请输入Agent名称" />
-        </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="createForm.description" type="textarea" rows="2" placeholder="请输入描述" />
-        </el-form-item>
-
-        <el-divider content-position="left">启动配置</el-divider>
-
-        <el-form-item label="可执行路径">
-          <el-input v-model="createForm.executablePath" placeholder="留空使用模板默认路径" />
-        </el-form-item>
-        <el-form-item label="配置文件">
-          <el-input v-model="createForm.configPath" placeholder="可选，如 C:\Users\xxx\.claude\settings.json" />
-          <div class="form-hint">指定配置文件路径，启动时将添加 --settings 参数</div>
-        </el-form-item>
-        <el-form-item label="启动参数">
-          <el-select v-model="createForm.args" multiple filterable allow-create style="width: 100%" placeholder="添加启动参数">
-          </el-select>
-        </el-form-item>
-        <el-form-item label="工作目录">
-          <el-input v-model="createForm.workingDir" placeholder="CLI进程的工作目录" />
-        </el-form-item>
-
-        <el-divider content-position="left">环境变量</el-divider>
-
-        <el-form-item label="">
-          <div class="env-vars-editor">
-            <div v-for="(item, index) in envVarList" :key="index" class="env-var-item">
-              <el-input v-model="item.key" placeholder="变量名" style="width: 150px;" />
-              <el-input v-model="item.value" placeholder="变量值" style="flex: 1;" show-password />
-              <el-button type="danger" size="small" @click="envVarList.splice(index, 1)">删除</el-button>
-            </div>
-            <el-button type="primary" size="small" @click="envVarList.push({key: '', value: ''})">+ 添加环境变量</el-button>
-          </div>
-        </el-form-item>
-
-        <el-divider content-position="left">能力配置</el-divider>
-
-        <el-form-item label="能力类型">
-          <el-select v-model="createForm.capabilityType" placeholder="选择能力类型" style="width: 200px;">
-            <el-option v-for="ct in capabilityTypes" :key="ct.code" :label="ct.description" :value="ct.code" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="领域标签">
-          <el-select v-model="createForm.domainTags" multiple filterable allow-create style="width: 100%" placeholder="输入领域标签，如java, python">
-          </el-select>
-        </el-form-item>
-        <el-form-item label="熟练度">
-          <el-rate v-model="createForm.proficiencyLevel" :max="5" show-score />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showCreateDialog = false">取消</el-button>
-        <el-button type="primary" @click="handleCreate" :loading="creating">创建</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 编辑Agent对话框 -->
-    <el-dialog v-model="showEditDialog" title="编辑CLI Agent" width="600px" :close-on-click-modal="false">
-      <el-form :model="editForm" label-width="100px">
-        <el-form-item label="Agent名称" required>
-          <el-input v-model="editForm.name" placeholder="请输入Agent名称" />
-        </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="editForm.description" type="textarea" rows="2" placeholder="请输入描述" />
-        </el-form-item>
-
-        <el-divider content-position="left">启动配置</el-divider>
-
-        <el-form-item label="可执行路径">
-          <el-input v-model="editForm.executablePath" placeholder="留空使用模板默认路径" />
-          <div class="form-hint">当前模板: {{ editingAgent?.templateName }}</div>
-        </el-form-item>
-        <el-form-item label="配置文件">
-          <el-input v-model="editForm.configPath" placeholder="可选，如 C:\Users\xxx\.claude\settings.json" />
-          <div class="form-hint">指定配置文件路径，启动时将添加 --settings 参数</div>
-        </el-form-item>
-        <el-form-item label="启动参数">
-          <el-select v-model="editForm.args" multiple filterable allow-create style="width: 100%" placeholder="添加启动参数">
-          </el-select>
-        </el-form-item>
-        <el-form-item label="工作目录">
-          <el-input v-model="editForm.workingDir" placeholder="CLI进程的工作目录" />
-        </el-form-item>
-
-        <el-divider content-position="left">环境变量</el-divider>
-
-        <el-form-item label="">
-          <div class="env-vars-editor">
-            <div v-for="(item, index) in editEnvVarList" :key="index" class="env-var-item">
-              <el-input v-model="item.key" placeholder="变量名" style="width: 150px;" />
-              <el-input v-model="item.value" placeholder="变量值" style="flex: 1;" show-password />
-              <el-button type="danger" size="small" @click="editEnvVarList.splice(index, 1)">删除</el-button>
-            </div>
-            <el-button type="primary" size="small" @click="editEnvVarList.push({key: '', value: ''})">+ 添加环境变量</el-button>
-          </div>
-        </el-form-item>
-
-        <el-divider content-position="left">能力配置</el-divider>
-
-        <el-form-item label="能力类型">
-          <el-select v-model="editForm.capabilityType" placeholder="选择能力类型" style="width: 200px;">
-            <el-option v-for="ct in capabilityTypes" :key="ct.code" :label="ct.description" :value="ct.code" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="领域标签">
-          <el-select v-model="editForm.domainTags" multiple filterable allow-create style="width: 100%" placeholder="输入领域标签">
-          </el-select>
-        </el-form-item>
-        <el-form-item label="熟练度">
-          <el-rate v-model="editForm.proficiencyLevel" :max="5" show-score />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showEditDialog = false">取消</el-button>
-        <el-button type="primary" @click="handleEdit" :loading="editing">保存</el-button>
-      </template>
-    </el-dialog>
+    <CliAgentCreateDialog
+      v-model:visible="showCreateDialog"
+      :templates="templates"
+      :capability-types="capabilityTypes"
+      @created="onCreated"
+    />
+    <CliAgentEditDialog
+      v-model:visible="showEditDialog"
+      :agent="editingAgent"
+      :templates="templates"
+      :capability-types="capabilityTypes"
+      @updated="onUpdated"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   getTemplates,
   getAgents,
-  getAgent,
-  createAgent,
-  updateAgent,
   startAgent,
   stopAgent,
   deleteAgent,
   getCapabilityTypes
 } from '@/api/cliAgent'
+import CliAgentCreateDialog from './CliAgentCreateDialog.vue'
+import CliAgentEditDialog from './CliAgentEditDialog.vue'
 
 interface CliAgent {
   id: string
@@ -270,8 +152,6 @@ interface CapabilityType {
 
 const router = useRouter()
 const loading = ref(false)
-const creating = ref(false)
-const editing = ref(false)
 const searchKeyword = ref('')
 const statusFilter = ref('')
 const templateFilter = ref('')
@@ -282,34 +162,6 @@ const editingAgent = ref<CliAgent | null>(null)
 const agents = ref<CliAgent[]>([])
 const templates = ref<Template[]>([])
 const capabilityTypes = ref<CapabilityType[]>([])
-
-const envVarList = ref<{key: string, value: string}[]>([])
-const editEnvVarList = ref<{key: string, value: string}[]>([])
-
-const createForm = reactive({
-  templateId: '',
-  name: '',
-  description: '',
-  executablePath: '',
-  configPath: '',
-  args: [] as string[],
-  workingDir: '',
-  capabilityType: '',
-  domainTags: [] as string[],
-  proficiencyLevel: 3
-})
-
-const editForm = reactive({
-  name: '',
-  description: '',
-  executablePath: '',
-  configPath: '',
-  args: [] as string[],
-  workingDir: '',
-  capabilityType: '',
-  domainTags: [] as string[],
-  proficiencyLevel: 3
-})
 
 onMounted(async () => {
   await Promise.all([
@@ -356,167 +208,21 @@ async function loadCapabilityTypes() {
   }
 }
 
-function onTemplateChange(templateId: string) {
-  const template = templates.value.find(t => t.id === templateId)
-  if (template) {
-    // 根据模板的必需环境变量自动添加环境变量条目
-    envVarList.value = template.requiredEnvVars?.map(v => ({key: v, value: ''})) || []
-  }
-}
-
 function openCreateDialog() {
-  resetCreateForm()
   showCreateDialog.value = true
 }
 
 function openEditDialog(agent: CliAgent) {
   editingAgent.value = agent
-
-  // 填充编辑表单
-  editForm.name = agent.name
-  editForm.description = agent.description || ''
-  editForm.executablePath = agent.executablePath || ''
-  editForm.configPath = agent.configPath || ''
-  editForm.args = agent.args || []
-  editForm.workingDir = agent.workingDir || ''
-
-  // 填充环境变量
-  editEnvVarList.value = []
-  if (agent.envVars) {
-    Object.entries(agent.envVars).forEach(([key, value]) => {
-      editEnvVarList.value.push({ key, value: value || '' })
-    })
-  }
-
-  // 填充能力配置
-  if (agent.capabilities && agent.capabilities.length > 0) {
-    const cap = agent.capabilities[0]
-    editForm.capabilityType = cap.type || ''
-    editForm.domainTags = cap.domainTags || []
-    editForm.proficiencyLevel = cap.proficiencyLevel || 3
-  } else {
-    editForm.capabilityType = ''
-    editForm.domainTags = []
-    editForm.proficiencyLevel = 3
-  }
-
   showEditDialog.value = true
 }
 
-async function handleCreate() {
-  if (!createForm.templateId) {
-    ElMessage.warning('请选择模板')
-    return
-  }
-  if (!createForm.name) {
-    ElMessage.warning('请输入Agent名称')
-    return
-  }
-
-  // 构建环境变量
-  const envVars: Record<string, string> = {}
-  envVarList.value.forEach(item => {
-    if (item.key && item.value) {
-      envVars[item.key] = item.value
-    }
-  })
-
-  creating.value = true
-  try {
-    const payload: any = {
-      name: createForm.name,
-      description: createForm.description,
-      templateId: createForm.templateId
-    }
-
-    if (createForm.executablePath) payload.executablePath = createForm.executablePath
-    if (createForm.configPath) payload.configPath = createForm.configPath
-    if (createForm.args.length > 0) payload.args = createForm.args
-    if (createForm.workingDir) payload.workingDir = createForm.workingDir
-    if (Object.keys(envVars).length > 0) payload.envVars = envVars
-
-    if (createForm.capabilityType) {
-      payload.capabilities = [{
-        type: createForm.capabilityType,
-        domainTags: createForm.domainTags,
-        proficiencyLevel: createForm.proficiencyLevel
-      }]
-    }
-
-    await createAgent(payload)
-    ElMessage.success('创建成功')
-    showCreateDialog.value = false
-    resetCreateForm()
-    loadAgents()
-  } catch (error: any) {
-    console.error('创建Agent失败:', error)
-    ElMessage.error(error.message || '创建失败')
-  } finally {
-    creating.value = false
-  }
+function onCreated() {
+  loadAgents()
 }
 
-async function handleEdit() {
-  if (!editForm.name) {
-    ElMessage.warning('请输入Agent名称')
-    return
-  }
-
-  if (!editingAgent.value) return
-
-  // 构建环境变量
-  const envVars: Record<string, string> = {}
-  editEnvVarList.value.forEach(item => {
-    if (item.key && item.value) {
-      envVars[item.key] = item.value
-    }
-  })
-
-  editing.value = true
-  try {
-    const payload: any = {
-      name: editForm.name,
-      description: editForm.description
-    }
-
-    if (editForm.executablePath) payload.executablePath = editForm.executablePath
-    if (editForm.configPath) payload.configPath = editForm.configPath
-    if (editForm.args.length > 0) payload.args = editForm.args
-    if (editForm.workingDir) payload.workingDir = editForm.workingDir
-    if (Object.keys(envVars).length > 0) payload.envVars = envVars
-
-    if (editForm.capabilityType) {
-      payload.capabilities = [{
-        type: editForm.capabilityType,
-        domainTags: editForm.domainTags,
-        proficiencyLevel: editForm.proficiencyLevel
-      }]
-    }
-
-    await updateAgent(editingAgent.value.id, payload)
-    ElMessage.success('保存成功')
-    showEditDialog.value = false
-    loadAgents()
-  } catch (error: any) {
-    console.error('保存Agent失败:', error)
-    ElMessage.error(error.message || '保存失败')
-  } finally {
-    editing.value = false
-  }
-}
-
-function resetCreateForm() {
-  createForm.templateId = ''
-  createForm.name = ''
-  createForm.description = ''
-  createForm.executablePath = ''
-  createForm.configPath = ''
-  createForm.args = []
-  createForm.workingDir = ''
-  createForm.capabilityType = ''
-  createForm.domainTags = []
-  createForm.proficiencyLevel = 3
-  envVarList.value = []
+function onUpdated() {
+  loadAgents()
 }
 
 function viewAgent(id: string) {
@@ -762,22 +468,5 @@ function formatTime(time: string): string {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
-}
-
-.env-vars-editor {
-  width: 100%;
-}
-
-.env-var-item {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
-  align-items: center;
-}
-
-.form-hint {
-  font-size: 12px;
-  color: $text-muted;
-  margin-top: 4px;
 }
 </style>

@@ -149,7 +149,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
@@ -166,6 +166,7 @@ import {
   getOutputLogs,
   clearOutputLogs
 } from '@/api/cliAgent'
+import { useAgentPolling } from '@/composables/useAgentPolling'
 
 interface Agent {
   id: string
@@ -197,9 +198,9 @@ const starting = ref(false)
 const stopping = ref(false)
 const restarting = ref(false)
 
-// 状态信息
-const processStatus = ref<any>(null)
-const tokenStats = ref<any>(null)
+// 状态信息（来自 composable）
+const { processStatus, tokenStats, startPolling, stopPolling } = useAgentPolling(agentId, 5000)
+
 const capabilities = ref<any[]>([])
 const capabilityTypes = ref<any[]>([])
 
@@ -215,18 +216,12 @@ const capabilityForm = ref({
   proficiencyLevel: 3
 })
 
-let statusTimer: any = null
-
 onMounted(async () => {
   await loadAgent()
   await loadCapabilities()
   await loadCapabilityTypes()
   await loadOutputLogs()
-  startStatusPolling()
-})
-
-onUnmounted(() => {
-  stopStatusPolling()
+  startPolling()
 })
 
 async function loadAgent() {
@@ -270,22 +265,6 @@ async function loadTokenStats() {
     tokenStats.value = await getAgentTokenStats(agentId)
   } catch (error) {
     console.error('加载Token统计失败:', error)
-  }
-}
-
-function startStatusPolling() {
-  loadProcessStatus()
-  loadTokenStats()
-  statusTimer = setInterval(() => {
-    loadProcessStatus()
-    loadTokenStats()
-  }, 5000)
-}
-
-function stopStatusPolling() {
-  if (statusTimer) {
-    clearInterval(statusTimer)
-    statusTimer = null
   }
 }
 
@@ -430,6 +409,8 @@ function formatNumber(num: number | null | undefined): string {
 </script>
 
 <style scoped>
+@use '@/assets/styles/variables' as *;
+
 .cli-agent-detail {
   padding: 0;
 }
@@ -462,8 +443,8 @@ function formatNumber(num: number | null | undefined): string {
   align-items: center;
 }
 .output-area {
-  background: #1e1e1e;
-  color: #d4d4d4;
+  background: $bg-surface;
+  color: $text-primary;
   border-radius: 8px;
   padding: 12px;
   height: 300px;
@@ -476,17 +457,17 @@ function formatNumber(num: number | null | undefined): string {
   margin-bottom: 4px;
 }
 .output-line .timestamp {
-  color: #6a9955;
+  color: $success;
   margin-right: 8px;
 }
 .output-line.output .content {
-  color: #d4d4d4;
+  color: $text-primary;
 }
 .output-line.error .content {
-  color: #f14c4c;
+  color: $danger;
 }
 .output-line.system .content {
-  color: #569cd6;
+  color: $color-cyan;
 }
 .input-area {
   margin-top: 16px;
