@@ -3,10 +3,13 @@ package com.cat.chatgroup;
 import com.cat.chatgroup.entity.StoredChatGroup;
 import com.cat.chatgroup.entity.StoredChatGroupMessage;
 import com.cat.cliagent.CliSessionService;
+import com.cat.knowledgebase.KnowledgeBaseService;
+import com.cat.rag.vectorstore.SearchResult;
 import com.cat.store.JsonFileStore;
 import com.cat.store.entity.StoredCliAgent;
-import lombok.RequiredArgsConstructor;
+import com.cat.store.entity.StoredKnowledgeBase;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
@@ -23,7 +26,6 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ChatGroupService {
 
     private final JsonFileStore<StoredChatGroup> chatGroupStore;
@@ -31,6 +33,22 @@ public class ChatGroupService {
     private final JsonFileStore<StoredCliAgent> cliAgentStore;
     private final CliSessionService cliSessionService;
     private final SimpMessagingTemplate messagingTemplate;
+
+    @Autowired(required = false)
+    private KnowledgeBaseService kbService;
+
+    public ChatGroupService(
+            JsonFileStore<StoredChatGroup> chatGroupStore,
+            JsonFileStore<StoredChatGroupMessage> chatGroupMessageStore,
+            JsonFileStore<StoredCliAgent> cliAgentStore,
+            CliSessionService cliSessionService,
+            SimpMessagingTemplate messagingTemplate) {
+        this.chatGroupStore = chatGroupStore;
+        this.chatGroupMessageStore = chatGroupMessageStore;
+        this.cliAgentStore = cliAgentStore;
+        this.cliSessionService = cliSessionService;
+        this.messagingTemplate = messagingTemplate;
+    }
 
     private static final String TOPIC_GROUP = "/topic/chat-group/";
     private static final int MAX_MESSAGES_PER_GROUP = 200;
@@ -47,7 +65,7 @@ public class ChatGroupService {
         return UUID.randomUUID().toString().replace("-", "").substring(0, length);
     }
 
-    public ChatGroupInfo createGroup(String name, String description, List<String> agentIds) {
+    public ChatGroupInfo createGroup(String name, String description, List<String> agentIds, List<String> kbIds) {
         String id = generateId(12);
         LocalDateTime now = LocalDateTime.now();
 
@@ -56,6 +74,7 @@ public class ChatGroupService {
         group.setName(name);
         group.setDescription(description);
         group.setAgentIds(agentIds != null ? new ArrayList<>(agentIds) : new ArrayList<>());
+        group.setKnowledgeBaseIds(kbIds != null ? new ArrayList<>(kbIds) : new ArrayList<>());
         group.setCreatedAt(now);
         group.setUpdatedAt(now);
 
@@ -65,13 +84,14 @@ public class ChatGroupService {
         return toGroupInfo(group);
     }
 
-    public ChatGroupInfo updateGroup(String groupId, String name, String description, List<String> agentIds) {
+    public ChatGroupInfo updateGroup(String groupId, String name, String description, List<String> agentIds, List<String> kbIds) {
         StoredChatGroup group = chatGroupStore.findById(groupId)
             .orElseThrow(() -> new IllegalArgumentException("群组不存在: " + groupId));
 
         if (name != null) group.setName(name);
         if (description != null) group.setDescription(description);
         if (agentIds != null) group.setAgentIds(new ArrayList<>(agentIds));
+        if (kbIds != null) group.setKnowledgeBaseIds(new ArrayList<>(kbIds));
         group.setUpdatedAt(LocalDateTime.now());
 
         chatGroupStore.save(groupId, group);
@@ -155,7 +175,7 @@ public class ChatGroupService {
                 }
 
                 // 构建发送给agent的消息（包含群聊上下文）
-                String agentPrompt = buildAgentPrompt(groupId, content, agentId);
+                String agentPrompt = buildAgentPrompt(groupId, content, agentId, groupId);
                 boolean sent = cliSessionService.sendInput(agentId, agentPrompt);
 
                 if (sent) {
@@ -223,7 +243,7 @@ public class ChatGroupService {
      * 构建发送给Agent的prompt，包含群聊上下文
      * 让Agent能感知到群聊中其他参与者的消息
      */
-    private String buildAgentPrompt(String groupId, String content, String currentAgentId) {
+    private String buildAgentPrompt(String groupId, String content, String currentAgentId, String gId) {
         // 获取最近的群聊消息作为上下文（排除空内容的占位消息）
         List<StoredChatGroupMessage> recentMessages = chatGroupMessageStore.find(
             msg -> groupId.equals(msg.getGroupId()) && msg.getContent() != null && !msg.getContent().isEmpty());
@@ -274,10 +294,67 @@ public class ChatGroupService {
         }
 
         prompt.append("---\n");
+
+        // Inject knowledge base results if configured
+        String kbContext = buildKnowledgeBaseContext(content, currentAgentId, gId);
+        if (!kbContext.isEmpty()) {
+            prompt.append(kbContext);
+            prompt.append("---\n");
+        }
+
         prompt.append("最新消息 - 用户: ").append(content).append("\n");
         prompt.append("请以「").append(currentAgentName).append("」的身份回复。");
 
         return prompt.toString();
+    }
+
+    private String buildKnowledgeBaseContext(String query, String agentId, String groupId) {
+        if (kbService == null) return "";
+
+        // Collect KB IDs from both agent and group, deduplicate
+        Set<String> kbIds = new LinkedHashSet<>();
+        StoredCliAgent agent = cliAgentStore.findById(agentId).orElse(null);
+        if (agent != null && agent.getKnowledgeBaseIds() != null) {
+            kbIds.addAll(agent.getKnowledgeBaseIds());
+        }
+        StoredChatGroup group = chatGroupStore.findById(groupId).orElse(null);
+        if (group != null && group.getKnowledgeBaseIds() != null) {
+            kbIds.addAll(group.getKnowledgeBaseIds());
+        }
+        if (kbIds.isEmpty()) return "";
+
+        // Search all KBs and collect results with scores
+        List<SearchResult> allResults = new ArrayList<>();
+        for (String kbId : kbIds) {
+            try {
+                kbService.getById(kbId);
+                allResults.addAll(kbService.search(kbId, query, 5));
+            } catch (Exception e) {
+                log.debug("KB search failed for kb {}: {}", kbId, e.getMessage());
+            }
+        }
+        if (allResults.isEmpty()) return "";
+
+        // Sort by score descending, deduplicate by content, take top 5
+        allResults.sort(Comparator.comparingDouble(SearchResult::getScore).reversed());
+        Set<String> seenContent = new HashSet<>();
+        List<SearchResult> merged = new ArrayList<>();
+        for (SearchResult r : allResults) {
+            if (seenContent.add(r.getContent())) {
+                merged.add(r);
+                if (merged.size() >= 5) break;
+            }
+        }
+
+        StringBuilder ctx = new StringBuilder();
+        ctx.append("## 知识库参考内容\n");
+        for (SearchResult r : merged) {
+            String fileName = r.getMetadata() != null ? r.getMetadata().getOrDefault("fileName", "未知") : "未知";
+            ctx.append("--- 片段 (来自 ").append(fileName).append(") ---\n");
+            ctx.append(r.getContent()).append("\n");
+        }
+        ctx.append("---\n");
+        return ctx.toString();
     }
 
     private void addSystemMessage(String groupId, String content) {
@@ -354,6 +431,7 @@ public class ChatGroupService {
             group.getName(),
             group.getDescription(),
             group.getAgentIds(),
+            group.getKnowledgeBaseIds(),
             agentBriefs,
             group.getCreatedAt() != null ? group.getCreatedAt().format(FORMATTER) : null,
             group.getUpdatedAt() != null ? group.getUpdatedAt().format(FORMATTER) : null
@@ -496,6 +574,7 @@ public class ChatGroupService {
         String name,
         String description,
         List<String> agentIds,
+        List<String> knowledgeBaseIds,
         List<AgentBrief> agents,
         String createdAt,
         String updatedAt

@@ -9,6 +9,7 @@ export interface ChatGroup {
   name: string
   description: string
   agentIds: string[]
+  knowledgeBaseIds: string[]
   agents: AgentBrief[]
   createdAt: string
   updatedAt: string
@@ -48,6 +49,7 @@ export interface GroupForm {
   name: string
   description: string
   agentIds: string[]
+  knowledgeBaseIds?: string[]
 }
 
 export interface GroupMessagePayload {

@@ -258,6 +258,15 @@ public class CliAgentService {
             .collect(Collectors.toList());
     }
 
+    public CliAgentResponse updateKnowledgeBases(String agentId, List<String> kbIds) {
+        StoredCliAgent agent = cliAgentStore.findById(agentId)
+            .orElseThrow(() -> new BusinessException(404, "CLI Agent不存在: " + agentId));
+        agent.setKnowledgeBaseIds(kbIds);
+        agent.setUpdatedAt(LocalDateTime.now());
+        cliAgentStore.save(agentId, agent);
+        return buildAgentResponse(agent);
+    }
+
     private CliAgentResponse buildAgentResponse(StoredCliAgent agent) {
         CliAgentResponse response = new CliAgentResponse();
         response.setId(agent.getId());
@@ -273,6 +282,7 @@ public class CliAgentService {
         response.setConfigPath(agent.getConfigPath());
         response.setWorkingDir(agent.getWorkingDir());
         response.setProcessId(agent.getProcessId());
+        response.setKnowledgeBaseIds(agent.getKnowledgeBaseIds());
         response.setLastStartedAt(agent.getLastStartedAt());
         response.setLastStoppedAt(agent.getLastStoppedAt());
         response.setCreatedBy(agent.getCreatedBy());

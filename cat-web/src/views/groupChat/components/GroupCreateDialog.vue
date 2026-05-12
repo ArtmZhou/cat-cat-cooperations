@@ -29,6 +29,20 @@
           <el-empty v-if="allAgents.length === 0" description="暂无Agent，请先创建" :image-size="40" />
         </div>
       </el-form-item>
+      <el-form-item label="知识库">
+        <div class="agent-selector">
+          <el-checkbox-group v-model="form.knowledgeBaseIds">
+            <div v-for="kb in allKbs" :key="kb.id" class="agent-checkbox-item">
+              <el-checkbox :value="kb.id">
+                <span class="agent-checkbox-label">
+                  📚 {{ kb.name }}
+                </span>
+              </el-checkbox>
+            </div>
+          </el-checkbox-group>
+          <el-empty v-if="allKbs.length === 0" description="暂无知识库" :image-size="40" />
+        </div>
+      </el-form-item>
     </el-form>
     <template #footer>
       <el-button @click="$emit('update:visible', false)">取消</el-button>
@@ -42,12 +56,15 @@
 <script setup lang="ts">
 import type { AgentBrief, GroupForm } from '@/types/models'
 
+interface KbBrief { id: string; name: string }
+
 defineProps<{
   visible: boolean
   editing: boolean
   saving: boolean
   form: GroupForm
   allAgents: AgentBrief[]
+  allKbs: KbBrief[]
 }>()
 
 defineEmits<{

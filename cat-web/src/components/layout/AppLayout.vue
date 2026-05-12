@@ -50,6 +50,7 @@ import {
   DashboardIcon,
   TerminalIcon,
   MessageBubbleIcon,
+  BookIcon,
   FoldIcon,
   ExpandIcon
 } from '@/components/CatIcons'
@@ -61,7 +62,8 @@ const isCollapsed = ref(false)
 const menuItems = [
   { path: '/dashboard', label: '仪表盘', icon: DashboardIcon },
   { path: '/cli-agents', label: 'CLI Agent', icon: TerminalIcon },
-  { path: '/group-chat', label: '群聊', icon: MessageBubbleIcon }
+  { path: '/group-chat', label: '群聊', icon: MessageBubbleIcon },
+  { path: '/knowledge-bases', label: '知识库', icon: BookIcon }
 ]
 
 function isMenuActive(path: string): boolean {

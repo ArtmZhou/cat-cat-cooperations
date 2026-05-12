@@ -8,6 +8,8 @@ import com.cat.cliagent.TokenUsageService;
 import com.cat.cliagent.dto.*;
 import com.cat.common.model.ApiResponse;
 import com.cat.common.model.PageResult;
+import com.cat.knowledgebase.KnowledgeBaseService;
+import com.cat.store.entity.StoredKnowledgeBase;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -33,6 +35,7 @@ public class CliAgentController {
     private final CliSessionService cliSessionService;
     private final CliTaskExecutionService taskExecutionService;
     private final TokenUsageService tokenUsageService;
+    private final KnowledgeBaseService kbService;
 
     @Operation(summary = "创建CLI Agent实例", description = "基于模板创建CLI Agent实例")
     @PostMapping
@@ -245,5 +248,27 @@ public class CliAgentController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
         TokenUsageService.TokenUsageStats stats = tokenUsageService.getSystemStats(startTime, endTime);
         return ApiResponse.success(stats);
+    }
+
+    // ========== 知识库绑定 ==========
+
+    @Operation(summary = "获取Agent绑定的知识库")
+    @GetMapping("/{agentId}/knowledge-bases")
+    public ApiResponse<List<StoredKnowledgeBase>> getAgentKnowledgeBases(@PathVariable String agentId) {
+        CliAgentResponse agent = cliAgentService.getAgent(agentId);
+        if (agent.getKnowledgeBaseIds() == null || agent.getKnowledgeBaseIds().isEmpty()) {
+            return ApiResponse.success(List.of());
+        }
+        return ApiResponse.success(agent.getKnowledgeBaseIds().stream()
+            .map(kbService::getById)
+            .toList());
+    }
+
+    @Operation(summary = "设置Agent绑定的知识库")
+    @PutMapping("/{agentId}/knowledge-bases")
+    public ApiResponse<CliAgentResponse> setAgentKnowledgeBases(
+            @PathVariable String agentId,
+            @RequestBody List<String> kbIds) {
+        return ApiResponse.success(cliAgentService.updateKnowledgeBases(agentId, kbIds));
     }
 }

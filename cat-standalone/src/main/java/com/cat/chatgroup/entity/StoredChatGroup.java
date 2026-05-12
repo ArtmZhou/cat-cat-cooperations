@@ -15,6 +15,7 @@ public class StoredChatGroup {
     private String name;
     private String description;
     private List<String> agentIds;      // 群成员Agent ID列表
+    private List<String> knowledgeBaseIds;  // 绑定的知识库ID列表
     private String createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

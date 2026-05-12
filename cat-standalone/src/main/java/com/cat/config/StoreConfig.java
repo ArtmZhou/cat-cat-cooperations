@@ -7,6 +7,9 @@ import com.cat.store.entity.StoredCliAgent;
 import com.cat.store.entity.StoredCliAgentCapability;
 import com.cat.store.entity.StoredCliAgentOutputLog;
 import com.cat.store.entity.StoredCliAgentTemplate;
+import com.cat.store.entity.StoredDocument;
+import com.cat.store.entity.StoredDocumentChunk;
+import com.cat.store.entity.StoredKnowledgeBase;
 import com.cat.store.entity.StoredTokenUsageLog;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -68,5 +71,20 @@ public class StoreConfig {
     @Bean
     public JsonFileStore<StoredChatGroupMessage> chatGroupMessageStore() {
         return new JsonFileStore<>(dataDir, "chat_group_messages", StoredChatGroupMessage.class);
+    }
+
+    @Bean
+    public JsonFileStore<StoredKnowledgeBase> knowledgeBaseStore() {
+        return new JsonFileStore<>(dataDir, "knowledge_bases", StoredKnowledgeBase.class);
+    }
+
+    @Bean
+    public JsonFileStore<StoredDocument> documentStore() {
+        return new JsonFileStore<>(dataDir, "documents", StoredDocument.class);
+    }
+
+    @Bean
+    public JsonFileStore<StoredDocumentChunk> documentChunkStore() {
+        return new JsonFileStore<>(dataDir, "document_chunks", StoredDocumentChunk.class);
     }
 }

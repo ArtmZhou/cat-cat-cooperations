@@ -68,6 +68,7 @@
       :saving="savingGroup"
       :form="groupForm"
       :all-agents="allAgents"
+      :all-kbs="allKbs"
       @save="handleSaveGroup"
     />
   </div>
@@ -86,6 +87,7 @@ import {
   clearGroupMessages
 } from '@/api/chatGroup'
 import { getAgents } from '@/api/cliAgent'
+import { getKnowledgeBases } from '@/api/knowledgeBase'
 import { cliWebSocket } from '@/utils/websocket'
 import type { ChatGroup, ChatMessage, GroupForm, AgentBrief } from '@/types/models'
 import ChatSidebar from './components/ChatSidebar.vue'
@@ -98,6 +100,7 @@ const groups = ref<ChatGroup[]>([])
 const selectedGroup = ref<ChatGroup | null>(null)
 const messages = ref<ChatMessage[]>([])
 const allAgents = ref<AgentBrief[]>([])
+const allKbs = ref<{id:string,name:string}[]>([])
 const wsConnected = ref(false)
 
 // Group form / dialog
@@ -107,7 +110,8 @@ const savingGroup = ref(false)
 const groupForm = ref<GroupForm>({
   name: '',
   description: '',
-  agentIds: []
+  agentIds: [],
+  knowledgeBaseIds: []
 })
 
 // Message sending
@@ -124,7 +128,7 @@ let spinnerInterval: ReturnType<typeof setInterval> | null = null
 
 // ===== Lifecycle =====
 onMounted(async () => {
-  await Promise.all([loadGroups(), loadAllAgents()])
+  await Promise.all([loadGroups(), loadAllAgents(), loadKbs()])
 
   try {
     await cliWebSocket.connect()
@@ -166,6 +170,15 @@ async function loadGroups() {
     groups.value = await listChatGroups() || []
   } catch (error) {
     console.error('加载群组列表失败:', error)
+  }
+}
+
+async function loadKbs() {
+  try {
+    const result = await getKnowledgeBases(1, 100)
+    allKbs.value = (result.items || []).map((kb: any) => ({ id: kb.id, name: kb.name }))
+  } catch (error) {
+    console.error('加载知识库列表失败:', error)
   }
 }
 
@@ -308,7 +321,7 @@ async function handleSaveGroup() {
 
     showCreateDialog.value = false
     editingGroup.value = null
-    groupForm.value = { name: '', description: '', agentIds: [] }
+    groupForm.value = { name: '', description: '', agentIds: [], knowledgeBaseIds: [] }
     await loadGroups()
   } catch (error: any) {
     ElMessage.error(error.message || '操作失败')
@@ -323,7 +336,8 @@ function handleGroupAction(command: string, group: ChatGroup) {
     groupForm.value = {
       name: group.name,
       description: group.description || '',
-      agentIds: [...group.agentIds]
+      agentIds: [...group.agentIds],
+      knowledgeBaseIds: [...(group.knowledgeBaseIds || [])]
     }
     showCreateDialog.value = true
   } else if (command === 'delete') {

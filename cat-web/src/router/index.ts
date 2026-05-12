@@ -28,6 +28,16 @@ const routes = [
         path: 'group-chat',
         name: 'GroupChat',
         component: () => import('@/views/groupChat/GroupChatView.vue')
+      },
+      {
+        path: 'knowledge-bases',
+        name: 'KnowledgeBaseList',
+        component: () => import('@/views/knowledgeBase/KnowledgeBaseListView.vue')
+      },
+      {
+        path: 'knowledge-bases/:kbId',
+        name: 'KnowledgeBaseDetail',
+        component: () => import('@/views/knowledgeBase/KnowledgeBaseDetailView.vue')
       }
     ]
   }

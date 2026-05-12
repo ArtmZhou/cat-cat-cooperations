@@ -2,6 +2,7 @@ package com.cat.store.entity;
 
 import lombok.Data;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 存储的CLI Agent实例实体
@@ -22,6 +23,7 @@ public class StoredCliAgent {
     private String workingDir;
     private String processId;     // 系统进程ID
     private String sessionId;     // CLI会话ID，用于恢复对话上下文
+    private List<String> knowledgeBaseIds;  // 绑定的知识库ID列表
     private LocalDateTime lastStartedAt;
     private LocalDateTime lastStoppedAt;
     private String createdBy;

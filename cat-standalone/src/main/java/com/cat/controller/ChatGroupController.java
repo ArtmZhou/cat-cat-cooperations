@@ -11,11 +11,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
-/**
- * 聊天群组控制器
- *
- * 管理多Agent群聊，支持创建群组、发送消息、@提及和广播
- */
 @Tag(name = "聊天群组", description = "多Agent群聊管理")
 @RestController
 @RequestMapping("/api/v1/chat-groups")
@@ -24,7 +19,7 @@ public class ChatGroupController {
 
     private final ChatGroupService chatGroupService;
 
-    @Operation(summary = "创建群组", description = "创建多Agent聊天群组")
+    @Operation(summary = "创建群组")
     @PostMapping
     public ApiResponse<ChatGroupInfo> createGroup(@RequestBody Map<String, Object> request) {
         String name = (String) request.get("name");
@@ -34,12 +29,13 @@ public class ChatGroupController {
         String description = (String) request.get("description");
         @SuppressWarnings("unchecked")
         List<String> agentIds = (List<String>) request.get("agentIds");
+        @SuppressWarnings("unchecked")
+        List<String> kbIds = (List<String>) request.get("knowledgeBaseIds");
 
-        ChatGroupInfo group = chatGroupService.createGroup(name.trim(), description, agentIds);
-        return ApiResponse.success(group);
+        return ApiResponse.success(chatGroupService.createGroup(name.trim(), description, agentIds, kbIds));
     }
 
-    @Operation(summary = "更新群组", description = "更新聊天群组信息")
+    @Operation(summary = "更新群组")
     @PutMapping("/{groupId}")
     public ApiResponse<ChatGroupInfo> updateGroup(
             @PathVariable String groupId,
@@ -48,33 +44,32 @@ public class ChatGroupController {
         String description = (String) request.get("description");
         @SuppressWarnings("unchecked")
         List<String> agentIds = (List<String>) request.get("agentIds");
+        @SuppressWarnings("unchecked")
+        List<String> kbIds = (List<String>) request.get("knowledgeBaseIds");
 
-        ChatGroupInfo group = chatGroupService.updateGroup(groupId, name, description, agentIds);
-        return ApiResponse.success(group);
+        return ApiResponse.success(chatGroupService.updateGroup(groupId, name, description, agentIds, kbIds));
     }
 
-    @Operation(summary = "删除群组", description = "删除聊天群组")
+    @Operation(summary = "删除群组")
     @DeleteMapping("/{groupId}")
     public ApiResponse<Void> deleteGroup(@PathVariable String groupId) {
         chatGroupService.deleteGroup(groupId);
         return ApiResponse.success();
     }
 
-    @Operation(summary = "获取群组详情", description = "获取聊天群组详情信息")
+    @Operation(summary = "获取群组详情")
     @GetMapping("/{groupId}")
     public ApiResponse<ChatGroupInfo> getGroup(@PathVariable String groupId) {
-        ChatGroupInfo group = chatGroupService.getGroup(groupId);
-        return ApiResponse.success(group);
+        return ApiResponse.success(chatGroupService.getGroup(groupId));
     }
 
-    @Operation(summary = "获取群组列表", description = "获取所有聊天群组")
+    @Operation(summary = "获取群组列表")
     @GetMapping
     public ApiResponse<List<ChatGroupInfo>> listGroups() {
-        List<ChatGroupInfo> groups = chatGroupService.listGroups();
-        return ApiResponse.success(groups);
+        return ApiResponse.success(chatGroupService.listGroups());
     }
 
-    @Operation(summary = "发送群聊消息", description = "发送消息到群组，支持@指定agent或广播")
+    @Operation(summary = "发送群聊消息")
     @PostMapping("/{groupId}/messages")
     public ApiResponse<ChatMessageInfo> sendMessage(
             @PathVariable String groupId,
@@ -86,23 +81,40 @@ public class ChatGroupController {
         @SuppressWarnings("unchecked")
         List<String> mentionedAgentIds = (List<String>) request.get("mentionedAgentIds");
 
-        ChatMessageInfo message = chatGroupService.sendUserMessage(groupId, content.trim(), mentionedAgentIds);
-        return ApiResponse.success(message);
+        return ApiResponse.success(chatGroupService.sendUserMessage(groupId, content.trim(), mentionedAgentIds));
     }
 
-    @Operation(summary = "获取群聊消息", description = "获取群组历史消息")
+    @Operation(summary = "获取群聊消息")
     @GetMapping("/{groupId}/messages")
     public ApiResponse<List<ChatMessageInfo>> getMessages(
             @PathVariable String groupId,
             @RequestParam(defaultValue = "100") int limit) {
-        List<ChatMessageInfo> messages = chatGroupService.getGroupMessages(groupId, limit);
-        return ApiResponse.success(messages);
+        return ApiResponse.success(chatGroupService.getGroupMessages(groupId, limit));
     }
 
-    @Operation(summary = "清空群聊消息", description = "清空群组的所有历史消息")
+    @Operation(summary = "清空群聊消息")
     @PostMapping("/{groupId}/messages/clear")
     public ApiResponse<Void> clearMessages(@PathVariable String groupId) {
         chatGroupService.clearGroupMessages(groupId);
+        return ApiResponse.success();
+    }
+
+    // ---- Knowledge base binding ----
+
+    @Operation(summary = "获取群组绑定的知识库")
+    @GetMapping("/{groupId}/knowledge-bases")
+    public ApiResponse<ChatGroupInfo> getGroupKnowledgeBases(@PathVariable String groupId) {
+        return ApiResponse.success(chatGroupService.getGroup(groupId));
+    }
+
+    @Operation(summary = "设置群组绑定的知识库")
+    @PutMapping("/{groupId}/knowledge-bases")
+    public ApiResponse<Void> setGroupKnowledgeBases(
+            @PathVariable String groupId,
+            @RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<String> kbIds = (List<String>) body.get("knowledgeBaseIds");
+        chatGroupService.updateGroup(groupId, null, null, null, kbIds);
         return ApiResponse.success();
     }
 }

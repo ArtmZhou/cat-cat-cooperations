@@ -196,3 +196,16 @@ export const ExpandIcon = defineComponent({
   }
 })
 
+export const BookIcon = defineComponent({
+  name: 'BookIcon',
+  props: iconProps,
+  setup(props) {
+    return () => h('span', {
+      style: { display: 'inline-flex', color: props.color, width: `${props.size}px`, height: `${props.size}px` }
+    }, [svgWrapper(props.size, [
+      h('path', { d: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20' }),
+      h('path', { d: 'M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z' })
+    ])])
+  }
+})
+
